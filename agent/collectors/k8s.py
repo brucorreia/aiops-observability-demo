@@ -65,6 +65,16 @@ def list_replicasets(namespace: str, name: str) -> list[dict[str, Any]]:
     return data.get("items") or []
 
 
+def list_nodes() -> list[dict[str, Any]]:
+    data = api("/api/v1/nodes")
+    return data.get("items") or []
+
+
+def list_namespace_pods(namespace: str) -> list[dict[str, Any]]:
+    data = api(f"/api/v1/namespaces/{namespace}/pods")
+    return data.get("items") or []
+
+
 def list_pods(namespace: str, name: str) -> list[dict[str, Any]]:
     data = api(f"/api/v1/namespaces/{namespace}/pods?labelSelector=app={name}")
     return data.get("items") or []

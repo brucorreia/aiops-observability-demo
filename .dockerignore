@@ -1,5 +1,7 @@
 .venv
 .git
 **/__pycache__
+**/node_modules
+apps/console/dist
 docs/incidents/*.json
 docs/incidents/*.md

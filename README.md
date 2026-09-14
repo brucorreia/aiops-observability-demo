@@ -237,6 +237,7 @@ source .kube/env
 make vmalert          # http://localhost:8081/vmalert/alerts
 make alertmanager     # http://localhost:9093
 make victorialogs     # http://localhost:9428
+make console          # http://localhost:8082 operator UI (Kube Sentinel)
 make recommendations  # latest lecture-style recommendation
 make agent-logs
 make app-logs

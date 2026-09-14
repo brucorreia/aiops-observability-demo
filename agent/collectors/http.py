@@ -22,6 +22,7 @@ def request(
     timeout: float = 8.0,
     cafile: str | None = None,
     insecure: bool = False,
+    raise_http_error: bool = True,
 ) -> tuple[int, bytes]:
     ctx = ssl._create_unverified_context() if insecure else ssl.create_default_context(cafile=cafile)
     req = urllib.request.Request(url, data=body, method=method, headers=headers or {})
@@ -30,6 +31,8 @@ def request(
             return resp.status, resp.read()
     except urllib.error.HTTPError as exc:
         payload = exc.read() if exc.fp else b""
+        if not raise_http_error:
+            return exc.code, payload
         raise HttpError(f"HTTP {exc.code} for {url}: {payload[:300]!r}", status=exc.code) from exc
     except urllib.error.URLError as exc:
         raise HttpError(f"request failed for {url}: {exc.reason}") from exc
@@ -37,6 +40,16 @@ def request(
 
 def get_json(url: str, **kwargs: Any) -> Any:
     _, raw = request(url, **kwargs)
+    if not raw:
+        return None
+    return json.loads(raw.decode())
+
+
+def json_request(url: str, method: str = "POST", payload: Any = None, **kwargs: Any) -> Any:
+    headers = dict(kwargs.pop("headers", {}) or {})
+    headers.setdefault("Content-Type", "application/json")
+    body = json.dumps(payload).encode() if payload is not None else None
+    _, raw = request(url, method=method, body=body, headers=headers, **kwargs)
     if not raw:
         return None
     return json.loads(raw.decode())

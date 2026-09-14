@@ -25,7 +25,7 @@ STALE_DEPLOY ?= 2026-01-01T00:00:00Z
 .PHONY: help tools doctor setup bootstrap run stop kube-env cluster argocd argocd-ui build monitoring deploy deploy-homelab setup-local \
 	demo-good demo-crashloop demo-oom demo-oom-stale demo-500 \
 	recommendations rollback status \
-	app-logs agent-logs victorialogs vmalert alertmanager llm-secret test clean
+	app-logs agent-logs victorialogs vmalert alertmanager llm-secret test clean console console-dev
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "%-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -196,6 +196,13 @@ vmalert: ## Port-forward VMAlert to localhost:8081
 
 alertmanager: ## Port-forward Alertmanager to localhost:9093
 	kubectl port-forward -n $(MONITORING_NS) svc/vmalertmanager-vmks 9093:9093
+
+console: ## Port-forward the operator console to localhost:8082
+	@echo "URL: http://localhost:8082"
+	kubectl port-forward -n $(MONITORING_NS) svc/ai-agent 8082:8080
+
+console-dev: ## Vite dev server (proxies APIs to localhost:8082)
+	cd apps/console && npm install && npm run dev
 
 test: ## Run scoring and normalization unit tests
 	python3 -m venv .venv

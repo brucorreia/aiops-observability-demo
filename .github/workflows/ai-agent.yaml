@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "agent/**"
+      - "apps/console/**"
       - "config/scoring.yaml"
       - ".github/workflows/ai-agent.yaml"
       - ".github/workflows/reusable-container-build.yaml"

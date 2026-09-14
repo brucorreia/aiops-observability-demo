@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Isolated GitHub Actions + Argo CD Applications for `demo-app`, `ai-agent`, and `load-generator`
 - Automatic scoring and rollback/scale when Alertmanager delivers a firing alert (no on-demand `make analyze`)
 - Demo incidents are git commits of `apps/demo-app/demo_mode` followed by a real GitOps image roll
+- Operator console at `make console` (http://localhost:8082): live demo-app, GitOps incident buttons, scores, and execute
 
 ## [0.1.2] - 2026-09-14
 
