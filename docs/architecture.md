@@ -21,8 +21,7 @@ VMAlert
     → collect context
     → score alternatives
     → recommend
-    → human approval
-    → rollback or scale
+    → automatic rollback or scale
 ```
 
 ## Workloads
@@ -60,7 +59,7 @@ Local and GHCR images carry OCI labels:
 3. **Hypothesize** regression, leak, low limit, load, dependency, config, or infrastructure.
 4. **Score** only with the LLM (logs + commits + cluster evidence). YAML weights are hints, not the score. If the LLM is unavailable, the agent recommends investigate and does not roll back or scale.
 5. **Recommend** actions whose `recommendation_score` values sum to 100.
-6. **Execute** only after a human decision. `automatic_execution_allowed` is always `false` in this version.
+6. **Execute** the recommended rollback or scale automatically when the LLM scored a firing Alertmanager alert. `investigate` and `none` do not change the cluster. If the LLM is unavailable, nothing is applied.
 
 ## Storage
 

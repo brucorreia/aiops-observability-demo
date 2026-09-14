@@ -13,61 +13,51 @@ source .kube/env
 make status
 ```
 
+Watch `make agent-logs`. Alerts fire on their own (about 15–40 seconds after the fault is visible). The agent scores the webhook and applies rollback or scale when the LLM recommends it.
+
 ## 1. CrashLoopBackOff after a deploy
 
 ```bash
 make demo-crashloop
 kubectl get pods -n aiops-demo -w
-make analyze
 ```
 
-Expected: `CrashLoopBackOff` from kube-state-metrics, recent `aiops.demo/deployed-at`, rollback `recommendation_score` very high.
-
-Human approval:
-
-```bash
-make approve-rollback
-```
+Expected: `CrashLoopBackOff` from kube-state-metrics, then a firing alert, then stdout on `ai-agent` with `recommendation_score` and `automatic_execution`.
 
 ## 2. OOM after a recent deploy
 
 ```bash
 make demo-good
 make demo-oom
-make analyze
 ```
 
-Expected: memory climbs in stdout, then `OOMKilled`. Rollback outranks vertical scale. Horizontal scale stays low because the leak is per process.
+Expected: memory climbs in stdout, then `OOMKilled`, then the agent scores and acts.
 
 ## 3. OOM without a recent deploy
 
 ```bash
 make demo-oom-stale
-make analyze
 ```
 
-The workload still OOMs, but `aiops.demo/deployed-at` is old. Vertical scale / investigate should outrank rollback. This is the slide that shows the agent is not a lookup table.
+The workload still OOMs, but `aiops.demo/deployed-at` is old. Vertical scale / investigate should outrank rollback.
 
 ## 4. HTTP 500 from logs
 
 ```bash
 make demo-good
 make demo-500
-make analyze
 ```
 
-`/health` stays `200`. `/api` writes JSON `status: 500` to stdout. `HighHttp5xxFromLogs` is LogsQL (`type: vlogs`), not PromQL. Rollback should lead while pods remain Ready.
+`/health` stays `200`. `/api` writes JSON `status: 500` to stdout. `HighHttp5xxFromLogs` is LogsQL (`type: vlogs`), not PromQL.
 
 ## Lecture output
 
-`make analyze` prints and saves:
+The agent prints on stdout when the alert arrives:
 
 ```text
+{"event": "recommendation_score", "recommended_action": "rollback", "scores": {"rollback": 80, ...}}
 INCIDENTE: OOMKilled
-WORKLOAD: demo-app
 ...
 AÇÃO RECOMENDADA: rollback
-EXECUÇÃO AUTOMÁTICA: desabilitada
+{"event": "automatic_execution", "decision": "approve_rollback", "executed": true}
 ```
-
-JSON and Markdown land in `docs/incidents/<timestamp>-<incident-type>-<workload>.*`.

@@ -1,57 +1,87 @@
 from __future__ import annotations
 
 import json
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlparse
 
 from config import load_scoring_config, settings as load_settings
-from enrichment.context import enrich
-from pipeline import analyze_alert, analyze_payload
+from pipeline import analyze_payload
 from recommendations import execute as execute_mod
 from recommendations import store
 
 CFG = load_settings(load_scoring_config())
-LAST_ALERT: dict[str, Any] | None = None
+LAST_EXECUTION_AT: dict[str, float] = {}
+EXECUTION_COOLDOWN_SECONDS = 600
 
 
-def infer_live_alert() -> dict[str, Any]:
-    probe = {
-        "alert_name": "LiveInspection",
-        "incident_type": "unknown",
-        "namespace": CFG["demo_namespace"],
-        "pod": "",
-        "container": "demo-app",
-        "severity": "critical",
-        "signal": "kubernetes",
-        "starts_at": "",
-    }
-    context = enrich(probe, CFG)
-    reason = context.get("last_termination_reason")
-    http_500 = context.get("http_500_count") or 0
-    if reason == "OOMKilled" or (context.get("memory_usage_ratio") or 0) >= 0.9:
-        probe["alert_name"] = "ContainerOOMKilled"
-        probe["incident_type"] = "oom"
-    elif reason in {"CrashLoopBackOff", "Error"} or (context.get("restarts") or 0) >= 3 and (context.get("pods_ready") or 0) == 0:
-        probe["alert_name"] = "ContainerCrashLoopBackOff"
-        probe["incident_type"] = "crashloop"
-    elif http_500 >= 5:
-        probe["alert_name"] = "HighHttp5xxFromLogs"
-        probe["incident_type"] = "http500"
-        probe["signal"] = "logs"
-    return probe
-
-
-def run_analysis(payload: dict[str, Any] | None = None) -> dict[str, Any]:
-    global LAST_ALERT
-    if payload and payload.get("alerts"):
-        results = analyze_payload(payload, CFG)
-        if results:
-            LAST_ALERT = results[0].get("alert")
-            return results[0]
-    alert = payload if payload and payload.get("alert_name") else LAST_ALERT or infer_live_alert()
-    LAST_ALERT = alert
-    return analyze_alert(alert, CFG)
+def apply_recommendation(analysis: dict[str, Any]) -> dict[str, Any]:
+    decision = execute_mod.automatic_decision(analysis)
+    ident = analysis.get("id") or ""
+    incident = analysis.get("incident_type") or "unknown"
+    if not decision:
+        reason = "investigate_or_none" if analysis.get("scoring_source") == "llm" else "llm_unavailable"
+        print(
+            json.dumps(
+                {
+                    "event": "automatic_execution_skipped",
+                    "id": ident,
+                    "recommended_action": analysis.get("recommended_action"),
+                    "reason": reason,
+                },
+                ensure_ascii=False,
+            ),
+            flush=True,
+        )
+        return analysis
+    last = LAST_EXECUTION_AT.get(incident, 0.0)
+    if time.monotonic() - last < EXECUTION_COOLDOWN_SECONDS:
+        print(
+            json.dumps(
+                {
+                    "event": "automatic_execution_skipped",
+                    "id": ident,
+                    "recommended_action": analysis.get("recommended_action"),
+                    "reason": "cooldown",
+                },
+                ensure_ascii=False,
+            ),
+            flush=True,
+        )
+        return analysis
+    try:
+        executed, detail = execute_mod.execute(decision, analysis)
+    except Exception as exc:  # noqa: BLE001 - log and keep the webhook 200
+        print(
+            json.dumps(
+                {
+                    "event": "automatic_execution_failed",
+                    "id": ident,
+                    "decision": decision,
+                    "error": str(exc),
+                },
+                ensure_ascii=False,
+            ),
+            flush=True,
+        )
+        return analysis
+    LAST_EXECUTION_AT[incident] = time.monotonic()
+    updated = store.record_decision(ident, decision, executed, detail)
+    print(
+        json.dumps(
+            {
+                "event": "automatic_execution",
+                "id": ident,
+                "decision": decision,
+                "executed": executed,
+                "detail": detail,
+            },
+            ensure_ascii=False,
+        ),
+        flush=True,
+    )
+    return updated
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -122,34 +152,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, {"error": "invalid json"})
             return
         if path == "/alerts":
-            print(json.dumps({"event": "alert_received", "payload": payload}), flush=True)
+            print(json.dumps({"event": "alert_received"}), flush=True)
             results = analyze_payload(payload, CFG)
-            if results:
-                global LAST_ALERT
-                LAST_ALERT = results[0].get("alert")
-                print(results[0].get("lecture_text"), flush=True)
-            self._send(200, {"status": "received", "analyses": [item["id"] for item in results]})
-            return
-        if path == "/analyze":
-            analysis = run_analysis(payload or None)
-            print(analysis.get("lecture_text"), flush=True)
-            self._send(200, analysis)
-            return
-        if path == "/approvals":
-            latest = store.latest()
-            ident = payload.get("analysis_id") or (latest or {}).get("id")
-            if not ident or not store.get(ident):
-                self._send(404, {"error": "no analysis to approve"})
-                return
-            decision = payload.get("decision")
-            analysis = store.get(ident)
-            try:
-                executed, detail = execute_mod.execute(decision, analysis)
-            except Exception as exc:  # noqa: BLE001 - surface execution errors to the operator
-                self._send(400, {"error": str(exc)})
-                return
-            updated = store.record_decision(ident, decision, executed, detail)
-            self._send(200, {"status": "recorded", "executed": executed, "detail": detail, "analysis": updated})
+            applied = [apply_recommendation(item) for item in results]
+            self._send(
+                200,
+                {"status": "received", "analyses": [item.get("id") for item in applied]},
+            )
             return
         self._send(404, {"error": "not found"})
 
@@ -158,5 +167,13 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print(json.dumps({"event": "started", "automatic_execution_allowed": CFG["automatic_execution_allowed"]}), flush=True)
+    print(
+        json.dumps(
+            {
+                "event": "started",
+                "automatic_execution_allowed": CFG["automatic_execution_allowed"],
+            }
+        ),
+        flush=True,
+    )
     ThreadingHTTPServer(("0.0.0.0", 8080), Handler).serve_forever()

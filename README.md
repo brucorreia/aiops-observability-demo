@@ -6,7 +6,7 @@
 [![ai-agent](https://github.com/brucorreia/aiops-observability-demo/actions/workflows/ai-agent.yaml/badge.svg)](https://github.com/brucorreia/aiops-observability-demo/actions/workflows/ai-agent.yaml)
 [![load-generator](https://github.com/brucorreia/aiops-observability-demo/actions/workflows/load-generator.yaml/badge.svg)](https://github.com/brucorreia/aiops-observability-demo/actions/workflows/load-generator.yaml)
 
-A reproducible Kubernetes demo where an agent investigates CrashLoopBackOff, OOMKilled, and HTTP 500 logs, then assigns a `recommendation_score` to each possible action. The scores are a prioritization from collected evidence, not mathematical certainty. Automatic execution stays off.
+A reproducible Kubernetes demo where firing alerts go to an agent that scores CrashLoopBackOff, OOMKilled, and HTTP 500 logs, then applies rollback or scale automatically when the LLM recommends it. The scores are a prioritization from collected evidence, not mathematical certainty.
 
 HTTP 500 is detected only from application stdout. There is no `demo_http_requests_total` metric and no PromQL 5xx rule.
 
@@ -36,7 +36,7 @@ make status
 - macOS (Apple Silicon or Intel)
 - [Homebrew](https://brew.sh)
 - A running Docker daemon (`docker info` must succeed). This repo does not start or stop Docker.
-- Python 3.12+ (`python3` on PATH) for `make test` and `make analyze`
+- Python 3.12+ (`python3` on PATH) for `make test`
 - An OpenAI-compatible API key for the agent to score incidents (`OPENAI_API_KEY`)
 
 Install Homebrew if needed:
@@ -87,7 +87,7 @@ cp .env.example .env
 Useful keys in `.env.example`:
 
 - `RECENT_DEPLOYMENT_WINDOW_MINUTES=15` — what counts as a recent Deployment revision
-- `AUTOMATIC_EXECUTION_ALLOWED=false` — keep this false
+- `AUTOMATIC_EXECUTION_ALLOWED=true` — apply rollback/scale after a scored firing alert
 - `OPENAI_API_KEY` — required for scoring; without it the agent returns `llm_unavailable`
 - `OPENAI_MODEL` — default `gpt-4o-mini`
 - `GITHUB_TOKEN` — optional if GitHub rate-limits anonymous commit lookups
@@ -207,39 +207,25 @@ Wait until pods are Ready before switching modes. After `demo-crashloop` the app
 
 ```bash
 source .kube/env
+make agent-logs   # in another terminal: scores and automatic_execution
 
 # 1. CrashLoopBackOff after a recorded deploy
 make demo-crashloop
 kubectl get pods -n aiops-demo -w
-make analyze
-make approve-rollback          # or: make rollback
 
 # 2. OOM after a recent deploy (rollback should outrank vertical scale)
 make demo-good
 make demo-oom
-make analyze
 
 # 3. Same OOM, old deploy annotation (vertical scale / investigate should lead)
 make demo-oom-stale
-make analyze
 
 # 4. HTTP 500 from logs; /health stays 200
 make demo-good
 make demo-500
-make analyze
-make approve-rollback
 ```
 
-`make analyze` talks to the in-cluster agent, prints the lecture text, and writes:
-
-```text
-docs/incidents/<timestamp>-<incident-type>-<workload>.json
-docs/incidents/<timestamp>-<incident-type>-<workload>.md
-```
-
-Do not commit those files during a demo.
-
-Alerts need a short window (about 30–60 seconds) after the fault is visible. If `make analyze` runs too early, wait and run it again.
+Wait 15–40 seconds after the fault is visible. VMAlert fires, Alertmanager calls the agent, and the score plus any cluster change show up on `make agent-logs`. There is no `make analyze`: the demo does not invent incidents without an alert.
 
 ## 10. Inspect telemetry
 
@@ -311,12 +297,12 @@ docs/                Architecture, scoring, talk script, incident output
 | `k3d cluster create` / cluster exists | `make clean` then `make run` |
 | `kubectl` talks to another cluster | `source .kube/env` and confirm context `k3d-aiops` |
 | Helm timeout | `make status`; retry `make monitoring`. First install is slow. |
-| Images `ImagePullBackOff` | Wait for the `images` Action to finish and for Argo CD `aiops` to be Synced. Make the GHCR packages public (or add a pull secret). |
+| Images `ImagePullBackOff` | Wait for the matching app workflow and for that Argo CD Application to be Synced. Make the GHCR packages public (or add a pull secret). |
 | Argo CD cannot fetch the repo | The GitHub remote must exist. A private repo needs an Argo CD repository credential |
 | `make argocd-ui` | http://localhost:8088 — user `admin`, password from `argocd-initial-admin-secret` |
-| `demo-crashloop` rollout never Ready | Expected. Use `kubectl get pods -n aiops-demo` and `make analyze`. |
-| HTTP 500 alert does not fire | Confirm load-generator is running and wait 30–60 s; `/health` stays 200 on purpose |
-| `make analyze` with empty evidence | Wait for the alert and metrics/logs to arrive, then rerun |
+| `demo-crashloop` rollout never Ready | Expected. Watch `make agent-logs` for the firing alert and score |
+| HTTP 500 alert does not fire | Confirm load-generator is running and wait 15–40 s; `/health` stays 200 on purpose |
+| Agent log shows `llm_unavailable` | Set `OPENAI_API_KEY` in `.env` and run `make llm-secret` |
 
 `make help` lists every target.
 

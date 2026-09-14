@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from enrichment.context import enrich
@@ -43,7 +44,7 @@ def analyze_alert(alert: dict[str, Any], settings: dict[str, Any]) -> dict[str, 
         "hypotheses": hypotheses,
         "recommendations": [],
         "recommended_action": "investigate",
-        "automatic_execution_allowed": False,
+        "automatic_execution_allowed": settings.get("automatic_execution_allowed", True),
         "score_quality": score_quality(missing, conflicting),
         "missing_evidence": missing,
         "conflicting_evidence": conflicting,
@@ -79,12 +80,39 @@ def analyze_alert(alert: dict[str, Any], settings: dict[str, Any]) -> dict[str, 
         analysis["score_quality"] = "low"
     analysis["lecture_text"] = lecture_text(analysis)
     analysis["markdown"] = markdown(analysis)
-    return save(analysis)
+    saved = save(analysis)
+    log_score(saved)
+    return saved
 
 
 def analyze_payload(payload: dict[str, Any], settings: dict[str, Any]) -> list[dict[str, Any]]:
     alerts = normalize_alertmanager(payload)
     return [analyze_alert(alert, settings) for alert in alerts]
+
+
+def log_score(analysis: dict[str, Any]) -> None:
+    scores = {
+        item["action"]: item["recommendation_score"]
+        for item in analysis.get("recommendations") or []
+    }
+    print(
+        json.dumps(
+            {
+                "event": "recommendation_score",
+                "id": analysis.get("id"),
+                "incident_type": analysis.get("incident_type"),
+                "scoring_source": analysis.get("scoring_source"),
+                "recommended_action": analysis.get("recommended_action"),
+                "scores": scores,
+                "summary": analysis.get("summary"),
+            },
+            ensure_ascii=False,
+        ),
+        flush=True,
+    )
+    text = analysis.get("lecture_text")
+    if text:
+        print(text, flush=True)
 
 
 def _summary(incident_type: str, context: dict[str, Any]) -> str:

@@ -1,5 +1,5 @@
 recent_deployment_window_minutes: 15
-automatic_execution_allowed: false
+automatic_execution_allowed: true
 llm:
   timeout_seconds: 45
 

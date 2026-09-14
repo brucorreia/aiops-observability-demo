@@ -161,14 +161,14 @@ alertmanager:
     route:
       receiver: ai-agent-webhook
       group_by: [alertname, namespace, pod]
-      group_wait: 10s
-      group_interval: 1m
-      repeat_interval: 15m
+      group_wait: 5s
+      group_interval: 2m
+      repeat_interval: 12h
     receivers:
       - name: ai-agent-webhook
         webhook_configs:
           - url: http://ai-agent.monitoring.svc.cluster.local:8080/alerts
-            send_resolved: true
+            send_resolved: false
 
 extraRules:
   aiops-demo-metrics:
@@ -182,7 +182,7 @@ extraRules:
                 namespace="aiops-demo",
                 reason="CrashLoopBackOff"
               } == 1
-            for: 30s
+            for: 10s
             labels:
               severity: critical
               incident_type: crashloop
@@ -195,7 +195,7 @@ extraRules:
                 namespace="aiops-demo",
                 reason="OOMKilled"
               } == 1
-            for: 30s
+            for: 10s
             labels:
               severity: critical
               incident_type: oom
@@ -211,7 +211,7 @@ extraRules:
               max by (namespace, pod, container) (
                 kube_pod_container_resource_limits{namespace="aiops-demo",resource="memory"}
               ) > 0.90
-            for: 30s
+            for: 10s
             labels:
               severity: critical
               incident_type: oom
@@ -226,7 +226,7 @@ extraRules:
         rules:
           - alert: HighHttp5xxFromLogs
             expr: 'kubernetes.pod_namespace:="aiops-demo" kubernetes.container_name:="demo-app" | unpack_json | path:="/api" status:500 | stats count() as http_500 | filter http_500:>=5'
-            for: 30s
+            for: 10s
             labels:
               severity: critical
               incident_type: http500

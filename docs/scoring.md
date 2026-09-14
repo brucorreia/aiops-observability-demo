@@ -10,7 +10,9 @@ Final scores are integers in `[0, 100]` and always sum to `100`.
 
 The agent sends collected logs, Kubernetes evidence, and recent GitHub commits to an OpenAI-compatible chat API. The model assigns the five `recommendation_score` values. It must cite log events and commit SHAs and must not invent evidence.
 
-If `OPENAI_API_KEY` is missing or the model call fails, the agent does **not** fall back to YAML weights. It records `scoring_source: llm_unavailable`, prefers `investigate`, and keeps rollback/scale at 0.
+If `OPENAI_API_KEY` is missing or the model call fails, the agent does **not** fall back to YAML weights. It records `scoring_source: llm_unavailable`, prefers `investigate`, keeps rollback/scale at 0, and does not change the cluster.
+
+When the LLM scores a firing alert, rollback / vertical scale / horizontal scale are applied automatically. `investigate` and `none` do not patch the workload.
 
 Put `OPENAI_API_KEY` in `.env` and run `make llm-secret` (also invoked by `make deploy`). The key lives in Secret `monitoring/ai-agent-llm`, not in Git. `OPENAI_MODEL` defaults to `gpt-4o-mini`; set `gpt-4o` if you want a stronger model.
 

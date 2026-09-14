@@ -64,6 +64,21 @@ def horizontal_scale(namespace: str, name: str, replicas: int) -> str:
     return f"patched replicas to {replicas}"
 
 
+ACTION_DECISIONS = {
+    "rollback": "approve_rollback",
+    "vertical_scale": "approve_vertical_scale",
+    "horizontal_scale": "approve_horizontal_scale",
+}
+
+
+def automatic_decision(analysis: dict[str, Any]) -> str | None:
+    if not analysis.get("automatic_execution_allowed"):
+        return None
+    if analysis.get("scoring_source") != "llm":
+        return None
+    return ACTION_DECISIONS.get(analysis.get("recommended_action"))
+
+
 def execute(decision: str, analysis: dict[str, Any]) -> tuple[bool, str]:
     evidence = analysis.get("evidence") or {}
     namespace = evidence.get("namespace") or "aiops-demo"

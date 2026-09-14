@@ -24,7 +24,7 @@ STALE_DEPLOY ?= 2026-01-01T00:00:00Z
 
 .PHONY: help tools doctor setup bootstrap run stop kube-env cluster argocd argocd-ui build monitoring deploy deploy-homelab setup-local \
 	demo-good demo-crashloop demo-oom demo-oom-stale demo-500 \
-	analyze recommendations approve-rollback rollback status \
+	recommendations rollback status \
 	app-logs agent-logs victorialogs vmalert alertmanager llm-secret test clean
 
 help: ## Show available targets
@@ -169,15 +169,8 @@ demo-oom-stale: ## Roll out OOMKilled with an old deploy timestamp
 demo-500: ## Roll out HTTP 500 logs while /health stays green
 	./scripts/set-demo-mode.sh http500
 
-analyze: ## Re-run analysis and save JSON/Markdown under docs/incidents/
-	mkdir -p docs/incidents
-	kubectl exec -n $(MONITORING_NS) deploy/ai-agent -- python -m api.cli analyze | python3 scripts/save-incident.py
-
-recommendations: ## Print the latest lecture-friendly recommendation
+recommendations: ## Print the latest lecture-friendly recommendation from a firing alert
 	kubectl exec -n $(MONITORING_NS) deploy/ai-agent -- python -m api.cli recommendations --format text
-
-approve-rollback: ## Record human approval and execute rollback
-	kubectl exec -n $(MONITORING_NS) deploy/ai-agent -- python -m api.cli approve --decision approve_rollback
 
 rollback: ## Undo the last demo-app rollout
 	kubectl rollout undo deployment/demo-app -n $(DEMO_NS)

@@ -94,6 +94,21 @@ class PipelineLlmOnlyTests(unittest.TestCase):
         self.assertEqual(scores["vertical_scale"], 0)
         self.assertEqual(scores["horizontal_scale"], 0)
 
+    @patch("pipeline.save", side_effect=lambda analysis: analysis)
+    @patch("pipeline.enrich")
+    def test_score_is_printed_to_stdout(self, enrich, _save):
+        enrich.return_value = _context()
+        from io import StringIO
+        from contextlib import redirect_stdout
+
+        buf = StringIO()
+        with redirect_stdout(buf):
+            analyze_alert({"alert_name": "ContainerCrashLoopBackOff"}, _settings())
+        output = buf.getvalue()
+        self.assertIn('"event": "recommendation_score"', output)
+        self.assertIn('"investigate": 70', output)
+        self.assertIn("AÇÃO RECOMENDADA: investigate", output)
+
 
 if __name__ == "__main__":
     unittest.main()
