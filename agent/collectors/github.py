@@ -141,6 +141,26 @@ def read_file(
     return base64.b64decode(encoded.replace("\n", "")).decode()
 
 
+WRITE_DENIED = (
+    "GITHUB_TOKEN sem permissão de escrita em brucorreia/aiops-observability-demo. "
+    "No fine-grained PAT, Contents deve ser Read and write; depois rode make llm-secret."
+)
+
+
+def _raise_github_write_error(exc: BaseException) -> None:
+    text = str(exc)
+    denied = (
+        "Resource not accessible by personal access token" in text
+        or "FORBIDDEN" in text
+        or (isinstance(exc, HttpError) and exc.status in {401, 403})
+    )
+    if denied:
+        raise HttpError(WRITE_DENIED, status=403) from exc
+    if isinstance(exc, HttpError):
+        raise exc
+    raise HttpError(text, status=502) from exc
+
+
 def commit_files(
     repo: str,
     files: dict[str, str],
@@ -155,51 +175,63 @@ def commit_files(
         raise ValueError("no files to commit")
     base = api_url.rstrip("/")
     headers = _headers(token)
-    ref = get_json(f"{base}/repos/{repo}/git/ref/heads/{branch}", headers=headers, timeout=15.0)
-    head = ((ref or {}).get("object") or {}).get("sha")
-    if not head:
-        raise HttpError(f"could not resolve {branch}", status=404)
-    commit = get_json(f"{base}/repos/{repo}/git/commits/{head}", headers=headers, timeout=15.0)
-    base_tree = ((commit or {}).get("tree") or {}).get("sha")
-    entries = []
-    for path, content in files.items():
-        blob = json_request(
-            f"{base}/repos/{repo}/git/blobs",
-            payload={"content": content, "encoding": "utf-8"},
+    try:
+        head_payload = get_json(
+            f"{base}/repos/{repo}/commits/{branch}",
             headers=headers,
             timeout=15.0,
         )
-        entries.append(
-            {"path": path, "mode": "100644", "type": "blob", "sha": (blob or {}).get("sha")}
+    except HttpError as exc:
+        _raise_github_write_error(exc)
+    head = (head_payload or {}).get("sha")
+    if not head:
+        raise HttpError(f"could not resolve {branch}", status=404)
+    additions = [
+        {
+            "path": path,
+            "contents": base64.b64encode(content.encode()).decode(),
+        }
+        for path, content in files.items()
+    ]
+    try:
+        result = json_request(
+            f"{base}/graphql",
+            payload={
+                "query": (
+                    "mutation($input: CreateCommitOnBranchInput!) {"
+                    " createCommitOnBranch(input: $input) {"
+                    " commit { oid commitUrl }"
+                    " }"
+                    " }"
+                ),
+                "variables": {
+                    "input": {
+                        "branch": {
+                            "repositoryNameWithOwner": repo,
+                            "branchName": branch,
+                        },
+                        "message": {"headline": message.splitlines()[0][:256]},
+                        "fileChanges": {"additions": additions},
+                        "expectedHeadOid": head,
+                    }
+                },
+            },
+            headers=headers,
+            timeout=20.0,
         )
-    tree = json_request(
-        f"{base}/repos/{repo}/git/trees",
-        payload={"base_tree": base_tree, "tree": entries},
-        headers=headers,
-        timeout=15.0,
-    )
-    created = json_request(
-        f"{base}/repos/{repo}/git/commits",
-        payload={
-            "message": message,
-            "tree": (tree or {}).get("sha"),
-            "parents": [head],
-        },
-        headers=headers,
-        timeout=15.0,
-    )
-    sha = (created or {}).get("sha") or ""
-    json_request(
-        f"{base}/repos/{repo}/git/refs/heads/{branch}",
-        method="PATCH",
-        payload={"sha": sha},
-        headers=headers,
-        timeout=15.0,
-    )
+    except HttpError as exc:
+        _raise_github_write_error(exc)
+    errors = (result or {}).get("errors") or []
+    if errors:
+        _raise_github_write_error(HttpError(str(errors[0]), status=403))
+    commit = (((result or {}).get("data") or {}).get("createCommitOnBranch") or {}).get("commit") or {}
+    sha = commit.get("oid") or ""
+    if not sha:
+        raise HttpError("GitHub did not return a commit SHA", status=502)
     return {
         "sha": sha,
         "short_sha": sha[:7],
-        "html_url": (created or {}).get("html_url"),
+        "html_url": commit.get("commitUrl"),
         "message": message,
         "branch": branch,
     }
