@@ -5,10 +5,10 @@ resources:
 images:
   - name: aiops-demo-app
     newName: ghcr.io/brucorreia/aiops-demo-app
-    newTag: "bc84c53"
+    newTag: "1dc99a4"
   - name: aiops-agent
     newName: ghcr.io/brucorreia/aiops-agent
-    newTag: "bc84c53"
+    newTag: "1dc99a4"
 patches:
   - target:
       kind: Deployment
