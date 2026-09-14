@@ -81,5 +81,17 @@ class AutomaticExecutionTests(unittest.TestCase):
         )
 
 
+class QuietServerTests(unittest.TestCase):
+    def test_broken_pipe_is_not_raised(self):
+        from api.server import Handler, QuietThreadingHTTPServer
+
+        server = QuietThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.addCleanup(server.server_close)
+        try:
+            raise BrokenPipeError()
+        except BrokenPipeError:
+            server.handle_error(None, ("127.0.0.1", 1))
+
+
 if __name__ == "__main__":
     unittest.main()

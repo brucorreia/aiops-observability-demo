@@ -27,7 +27,7 @@ VMAlert
 
 ## Workloads
 
-- `apps/demo-app` mode comes from `apps/demo-app/demo_mode` baked into the image. The console CrashLoop button randomly writes `crashloop` (silent `os._exit(1)`) or `oom` (RSS until the 32Mi cgroup limit). Both look like CrashLoopBackOff on the operator UI; the agent reclassifies OOM from `last_termination_reason`. `http500` stays available via `make demo-500`. `/api` always returns `checkout_reais`, which grows R$ 7.00 per second from process start. There is no custom HTTP Prometheus metric.
+- `apps/demo-app` mode comes from `apps/demo-app/demo_mode` baked into the image. The console CrashLoop button randomly writes `crashloop` (silent `os._exit(1)`) or `oom` (RSS until the 32Mi cgroup limit). Both look like CrashLoopBackOff on the operator UI; the agent reclassifies OOM from `last_termination_reason`. `http500` stays available via `make demo-500`. `/api` returns a new checkout order (`pedido`, `produto`, `valor` between R$ 1.00 and R$ 350.00) on every request. There is no custom HTTP Prometheus metric.
 - `load-generator` calls `/api` once per second so log-based HTTP 500 alerts have volume.
 - `agent` receives Alertmanager webhooks after a GitOps roll of `demo-app`. Demo incidents are git commits (`apps/demo-app/demo_mode`) plus an Argo CD image sync, not in-cluster `kubectl patch`.
 - `agent` receives Alertmanager webhooks, enriches from Kubernetes, VictoriaMetrics, VictoriaLogs, and GitHub commits, then scores **only with the LLM**. Without an API key it records `llm_unavailable` and does not recommend rollback or scale.

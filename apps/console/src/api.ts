@@ -9,22 +9,22 @@ async function parse<T>(response: Response): Promise<T> {
   return data as T;
 }
 
-export function fetchStatus(): Promise<ClusterStatus> {
-  return fetch("/api/status").then((res) => parse<ClusterStatus>(res));
+export function fetchStatus(signal?: AbortSignal): Promise<ClusterStatus> {
+  return fetch("/api/status", { signal }).then((res) => parse<ClusterStatus>(res));
 }
 
-export function fetchLogs(source: string): Promise<{ logs: LogLine[] }> {
-  return fetch(`/api/logs?source=${encodeURIComponent(source)}`).then((res) =>
+export function fetchLogs(source: string, signal?: AbortSignal): Promise<{ logs: LogLine[] }> {
+  return fetch(`/api/logs?source=${encodeURIComponent(source)}`, { signal }).then((res) =>
     parse<{ logs: LogLine[] }>(res),
   );
 }
 
-export function fetchEvents(): Promise<{ events: EventLine[] }> {
-  return fetch("/api/events").then((res) => parse<{ events: EventLine[] }>(res));
+export function fetchEvents(signal?: AbortSignal): Promise<{ events: EventLine[] }> {
+  return fetch("/api/events", { signal }).then((res) => parse<{ events: EventLine[] }>(res));
 }
 
-export function fetchRecommendation(): Promise<AnalysisView | null> {
-  return fetch("/api/recommendations").then((res) => {
+export function fetchRecommendation(signal?: AbortSignal): Promise<AnalysisView | null> {
+  return fetch("/api/recommendations", { signal }).then((res) => {
     if (res.status === 404) return null;
     return parse<AnalysisView>(res);
   });

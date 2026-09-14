@@ -20,7 +20,7 @@ Click **CrashLoop**. That commit does not say whether the image will die on star
 
 Watch `make agent-logs`. Each incident **commits and pushes** `apps/demo-app/demo_mode`, waits for the `demo-app` image workflow, then Argo CD rolls the new image. Alerts fire on their own (about 15–40 seconds after that roll). The agent scores the webhook and **does not** apply rollback or scale while `AUTOMATIC_EXECUTION_ALLOWED=false`. Use Execute on the console if you want to apply the recommendation.
 
-The checkout card polls `/api` every second. The amount grows R$ 7.00 per second from process start, then goes blank when the pod cannot stay Ready.
+The checkout card polls `/api` every second. Each response is a new order (`pedido`, `produto`, `valor` between R$ 1.00 and R$ 350.00). The feed goes blank when the pod cannot stay Ready.
 
 The working tree must be clean. First run takes about a minute (GHCR build).
 

@@ -197,7 +197,7 @@ kubectl get pvc -n monitoring
 kubectl get vmrule -n monitoring
 ```
 
-`demo-app` starts in `DEMO_MODE=good` (`/health` and `/api` return 200). `/api` also returns `checkout_reais`, which grows R$ 7.00 per second so the console checkout card stays live.
+`demo-app` starts in `DEMO_MODE=good` (`/health` and `/api` return 200). `/api` returns a new `pedido`, `produto`, and `valor` (R$ 1.00–350.00) on every request so the console checkout feed stays live.
 
 ## 9. Run the incidents
 

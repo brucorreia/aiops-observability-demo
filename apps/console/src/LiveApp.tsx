@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 
-type ApiBody = {
+type Order = {
   status?: number;
   version?: string;
+  pedido?: number;
+  produto?: string;
+  valor?: number;
   checkout_reais?: number;
 };
 
@@ -11,46 +14,61 @@ function formatReais(value?: number | null): string {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function asOrder(body: Order | null): Order | null {
+  if (!body) return null;
+  const valor = body.valor ?? body.checkout_reais;
+  if (valor == null) return null;
+  return { ...body, valor };
+}
+
 export function LiveApp({
   reloadKey,
-  fallbackCheckout,
+  fallbackOrder,
 }: {
   reloadKey: number;
-  fallbackCheckout?: number | null;
+  fallbackOrder?: Order | null;
 }) {
   const [health, setHealth] = useState<"up" | "down">("down");
-  const [api, setApi] = useState<ApiBody | null>(null);
+  const [orders, setOrders] = useState<Order[]>([]);
 
   useEffect(() => {
     let cancelled = false;
+    let active: AbortController | null = null;
     async function tick() {
+      active?.abort();
+      const controller = new AbortController();
+      active = controller;
       try {
-        const healthRes = await fetch("/live/demo/health");
-        const apiRes = await fetch("/live/demo/api");
-        let apiBody: ApiBody | null = null;
+        const healthRes = await fetch("/live/demo/health", { signal: controller.signal });
+        const apiRes = await fetch("/live/demo/api", { signal: controller.signal });
+        let apiBody: Order | null = null;
         if (apiRes.ok || apiRes.status === 500) {
-          apiBody = (await apiRes.json()) as ApiBody;
+          apiBody = asOrder((await apiRes.json()) as Order);
         }
-        if (cancelled) return;
+        if (cancelled || controller.signal.aborted) return;
         setHealth(healthRes.ok ? "up" : "down");
-        setApi(apiBody);
-      } catch {
-        if (!cancelled) {
-          setHealth("down");
-          setApi(null);
+        if (apiBody?.pedido != null) {
+          setOrders((prev) => {
+            if (prev[0]?.pedido === apiBody.pedido) return prev;
+            return [apiBody, ...prev].slice(0, 7);
+          });
         }
+      } catch (err) {
+        if (cancelled || (err instanceof DOMException && err.name === "AbortError")) return;
+        setHealth("down");
       }
     }
     tick();
     const timer = window.setInterval(tick, 1000);
     return () => {
       cancelled = true;
+      active?.abort();
       window.clearInterval(timer);
     };
   }, [reloadKey]);
 
   const down = health === "down";
-  const amount = api?.checkout_reais ?? fallbackCheckout ?? null;
+  const latest = orders[0] || asOrder(fallbackOrder || null);
   const title = down ? "Checkout indisponível" : "Checkout operacional";
   const tone = down ? "border-bad/50 bg-bad/10" : "border-ok/40 bg-ok/10";
 
@@ -63,21 +81,39 @@ export function LiveApp({
         </div>
         <div className="font-mono text-[11px] text-mute">{down ? "Fora do ar" : "Ready"}</div>
       </div>
-      <div className="flex flex-1 items-center justify-center p-6">
-        <div className="w-full max-w-sm rounded-lg border border-line bg-panel p-5">
-          <div className="text-[11px] uppercase tracking-[0.16em] text-mute">Pedido #4821</div>
+      <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+        <div className="rounded-lg border border-line bg-panel p-4">
+          <div className="text-[11px] uppercase tracking-[0.16em] text-mute">
+            {latest?.pedido != null ? `Pedido #${latest.pedido}` : "Aguardando pedido"}
+          </div>
+          <div className="mt-1 text-sm text-white">{down ? "—" : latest?.produto || "—"}</div>
           <div className={`mt-2 text-2xl tabular-nums ${down ? "text-bad" : "text-ok"}`}>
-            {down ? "—" : formatReais(amount)}
+            {down ? "—" : formatReais(latest?.valor)}
           </div>
-          <div className="mt-1 text-[11px] text-mute">valor de checkout_reais na resposta de GET /api</div>
-          <div className="mt-4 h-2 rounded bg-navy">
-            <div className={`h-2 rounded ${down ? "w-1/5 bg-bad" : "w-4/5 bg-ok"}`} />
-          </div>
-          <p className="mt-4 text-[12px] leading-5 text-mute">
+          <p className="mt-2 text-[11px] text-mute">
             {down
               ? "/health não responde. Clique no workload com problema para abrir a análise da IA."
-              : "O backend incrementa R$ 7,00 por segundo. Este card atualiza a cada segundo via /api."}
+              : "Novo pedido a cada segundo via GET /api (R$ 1,00 a R$ 350,00)."}
           </p>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-line bg-navy/50">
+          {(down ? [] : orders).map((item, index) => (
+            <div
+              key={`${item.pedido}-${index}`}
+              className="flex items-center justify-between gap-3 border-b border-line/60 px-3 py-2 last:border-b-0"
+            >
+              <div className="min-w-0">
+                <div className="font-mono text-[11px] text-mute">#{item.pedido}</div>
+                <div className="truncate text-[12px]">{item.produto}</div>
+              </div>
+              <div className={`shrink-0 font-mono text-[12px] ${index === 0 ? "text-ok" : "text-white"}`}>
+                {formatReais(item.valor)}
+              </div>
+            </div>
+          ))}
+          {down || !orders.length ? (
+            <div className="px-3 py-4 text-[12px] text-mute">sem pedidos ainda</div>
+          ) : null}
         </div>
       </div>
     </section>

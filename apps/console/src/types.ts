@@ -83,7 +83,15 @@ export type ClusterStatus = {
     deployed_at?: string;
     mode?: string;
     health?: { status?: string } | null;
-    api?: { status?: number; version?: string; checkout_reais?: number; currency?: string } | null;
+    api?: {
+      status?: number;
+      version?: string;
+      pedido?: number;
+      produto?: string;
+      valor?: number;
+      checkout_reais?: number;
+      currency?: string;
+    } | null;
   };
   workloads: Workload[];
   topology: {

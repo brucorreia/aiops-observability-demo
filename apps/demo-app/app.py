@@ -1,5 +1,6 @@
 import json
 import os
+import random
 import threading
 import time
 from datetime import datetime, timezone
@@ -8,6 +9,20 @@ from pathlib import Path
 
 PAGE = 4096
 CHUNK = 8 * 1024 * 1024
+PRODUCTS = (
+    "Fone Bluetooth",
+    "Camiseta Preta",
+    "Garrafa Térmica",
+    "Mouse Sem Fio",
+    "Caderno A5",
+    "Mochila Urbana",
+    "Carregador USB-C",
+    "Caneca Cerâmica",
+    "Teclado Compacto",
+    "Luminária LED",
+    "Cabo HDMI",
+    "Squeeze 750ml",
+)
 
 
 def load_mode() -> str:
@@ -22,9 +37,8 @@ PUBLIC_MODE = "crashloop" if MODE in {"crashloop", "oom"} else MODE
 PORT = int(os.getenv("PORT", "8080"))
 SERVICE = os.getenv("SERVICE_NAME", "demo-app")
 HELD: list[bytearray] = []
-STARTED_AT = time.monotonic()
-CHECKOUT_BASE = 128.90
-CHECKOUT_RATE = 7.0
+ORDER_LOCK = threading.Lock()
+ORDER_SEQ = 4800
 
 
 def utc_now() -> str:
@@ -54,8 +68,18 @@ def exhaust_memory() -> None:
         HELD.append(block)
 
 
-def checkout_reais() -> float:
-    return round(CHECKOUT_BASE + max(0.0, time.monotonic() - STARTED_AT) * CHECKOUT_RATE, 2)
+def next_order() -> dict:
+    global ORDER_SEQ
+    with ORDER_LOCK:
+        ORDER_SEQ += 1
+        number = ORDER_SEQ
+    valor = round(random.uniform(1.0, 350.0), 2)
+    return {
+        "pedido": number,
+        "produto": random.choice(PRODUCTS),
+        "valor": valor,
+        "currency": "BRL",
+    }
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -65,7 +89,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
-        self.wfile.write(payload)
+        try:
+            self.wfile.write(payload)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            return
 
     def do_GET(self) -> None:
         if self.path == "/health":
@@ -75,6 +102,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api":
             started = time.monotonic()
             status = 500 if MODE == "http500" else 200
+            order = next_order()
             duration_ms = max(1, int((time.monotonic() - started) * 1000)) or 12
             event = {
                 "level": "error" if status == 500 else "info",
@@ -82,6 +110,9 @@ class Handler(BaseHTTPRequestHandler):
                 "path": "/api",
                 "status": status,
                 "duration_ms": duration_ms if duration_ms > 1 else 12,
+                "pedido": order["pedido"],
+                "produto": order["produto"],
+                "valor": order["valor"],
                 "message": "internal error serving /api" if status == 500 else "request completed",
             }
             log_event(**event)
@@ -91,8 +122,7 @@ class Handler(BaseHTTPRequestHandler):
                     {
                         "status": status,
                         "version": PUBLIC_MODE,
-                        "checkout_reais": checkout_reais(),
-                        "currency": "BRL",
+                        **order,
                     }
                 ),
             )

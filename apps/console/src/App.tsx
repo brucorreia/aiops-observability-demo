@@ -44,14 +44,14 @@ export default function App() {
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const [appKey, setAppKey] = useState(0);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (signal?: AbortSignal) => {
     try {
       const [nextStatus, nextAnalysis, nextDemo, nextAgent, nextEvents] = await Promise.all([
-        fetchStatus(),
-        fetchRecommendation(),
-        fetchLogs("demo-app"),
-        fetchLogs("ai-agent"),
-        fetchEvents(),
+        fetchStatus(signal),
+        fetchRecommendation(signal),
+        fetchLogs("demo-app", signal),
+        fetchLogs("ai-agent", signal),
+        fetchEvents(signal),
       ]);
       setStatus(nextStatus);
       setAnalysis(nextAnalysis);
@@ -60,15 +60,25 @@ export default function App() {
       setEvents(nextEvents.events || []);
       setPollError(null);
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setPollError(err instanceof Error ? err.message : "falha ao ler o cluster");
     }
   }, []);
 
   useEffect(() => {
     if (paused) return;
-    refresh();
-    const timer = window.setInterval(refresh, 2500);
-    return () => window.clearInterval(timer);
+    let controller: AbortController | null = null;
+    const tick = () => {
+      controller?.abort();
+      controller = new AbortController();
+      refresh(controller.signal);
+    };
+    tick();
+    const timer = window.setInterval(tick, 2500);
+    return () => {
+      controller?.abort();
+      window.clearInterval(timer);
+    };
   }, [paused, refresh]);
 
   useEffect(() => {
@@ -132,7 +142,7 @@ export default function App() {
       {status ? <Metrics status={status} /> : <div className="px-6 py-4 text-sm text-mute">Lendo o cluster…</div>}
       <div className="flex min-h-0 flex-1">
         <main className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1.1fr)_minmax(0,0.95fr)] grid-rows-[minmax(0,1.05fr)_minmax(0,0.95fr)] gap-3 p-4 pr-3">
-          <LiveApp reloadKey={appKey} fallbackCheckout={status?.demo_app?.api?.checkout_reais} />
+          <LiveApp reloadKey={appKey} fallbackOrder={status?.demo_app?.api} />
           <Topology
             nodes={status?.topology.nodes || []}
             unscheduled={status?.topology.unscheduled || []}
