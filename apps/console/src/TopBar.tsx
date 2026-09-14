@@ -21,11 +21,22 @@ type Props = {
   paused: boolean;
   busy?: string | null;
   error?: string | null;
+  pipelineLocked?: boolean;
+  pipelineMessage?: string | null;
   onTogglePause: () => void;
   onIncident: (mode: string) => void;
 };
 
-export function TopBar({ status, paused, busy, error, onTogglePause, onIncident }: Props) {
+export function TopBar({
+  status,
+  paused,
+  busy,
+  error,
+  pipelineLocked,
+  pipelineMessage,
+  onTogglePause,
+  onIncident,
+}: Props) {
   const live = status?.connections;
   const auto = Boolean(status?.automatic_execution_allowed);
   return (
@@ -73,7 +84,7 @@ export function TopBar({ status, paused, busy, error, onTogglePause, onIncident 
             <button
               key={item.mode}
               type="button"
-              disabled={Boolean(busy)}
+              disabled={Boolean(busy) || Boolean(pipelineLocked)}
               onClick={() => onIncident(item.mode)}
               className="inline-flex items-center gap-1.5 rounded border border-line bg-raised px-2.5 py-1.5 text-[11px] uppercase tracking-[0.12em] text-mute transition hover:border-cyan/40 hover:text-white disabled:opacity-40"
             >
@@ -99,9 +110,9 @@ export function TopBar({ status, paused, busy, error, onTogglePause, onIncident 
           <Maximize2 className="h-4 w-4" />
         </button>
       </div>
-      {(busy || error) && (
-        <div className="absolute left-1/2 top-[72px] z-20 -translate-x-1/2 rounded-b border border-line bg-panel px-3 py-1 text-xs text-warn">
-          {error || busy}
+      {(busy || error || pipelineMessage) && (
+        <div className="absolute left-1/2 top-[72px] z-20 max-w-[720px] -translate-x-1/2 rounded-b border border-line bg-panel px-3 py-1 text-center text-xs text-warn">
+          {error || busy || pipelineMessage}
         </div>
       )}
     </header>

@@ -87,7 +87,6 @@ export type ClusterStatus = {
       status?: number;
       version?: string;
       pedido?: number;
-      produto?: string;
       valor?: number;
       checkout_reais?: number;
       currency?: string;
@@ -97,6 +96,11 @@ export type ClusterStatus = {
   topology: {
     nodes: Array<{ name: string; ready: boolean; pods: Workload[] }>;
     unscheduled: Workload[];
+  };
+  pipeline?: {
+    busy: boolean;
+    message?: string | null;
+    run?: { name?: string; status?: string; html_url?: string } | null;
   };
   rollout: {
     mode?: string;

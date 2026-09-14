@@ -265,3 +265,42 @@ def workflow_run_for_sha(
         "html_url": run.get("html_url"),
         "name": run.get("name"),
     }
+
+
+ACTIVE_WORKFLOW_STATUSES = frozenset({"queued", "in_progress", "waiting", "pending", "requested"})
+
+
+def _workflow_run_summary(run: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": run.get("id"),
+        "name": run.get("name") or run.get("display_title"),
+        "status": run.get("status"),
+        "conclusion": run.get("conclusion"),
+        "html_url": run.get("html_url"),
+        "head_sha": (run.get("head_sha") or "")[:7],
+        "path": run.get("path"),
+    }
+
+
+def active_workflow_runs(
+    repo: str,
+    token: str | None,
+    api_url: str = "https://api.github.com",
+    branch: str = "main",
+) -> list[dict[str, Any]]:
+    if not token or not repo:
+        return []
+    base = api_url.rstrip("/")
+    try:
+        payload = get_json(
+            f"{base}/repos/{repo}/actions/runs?branch={branch}&per_page=20",
+            headers=_headers(token),
+            timeout=8.0,
+        )
+    except (HttpError, ValueError, TypeError):
+        return []
+    found: list[dict[str, Any]] = []
+    for run in (payload or {}).get("workflow_runs") or []:
+        if (run.get("status") or "") in ACTIVE_WORKFLOW_STATUSES:
+            found.append(_workflow_run_summary(run))
+    return found

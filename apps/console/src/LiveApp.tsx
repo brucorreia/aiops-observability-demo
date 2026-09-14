@@ -1,10 +1,7 @@
 import { useEffect, useState } from "react";
 
 type Order = {
-  status?: number;
-  version?: string;
   pedido?: number;
-  produto?: string;
   valor?: number;
   checkout_reais?: number;
 };
@@ -18,7 +15,7 @@ function asOrder(body: Order | null): Order | null {
   if (!body) return null;
   const valor = body.valor ?? body.checkout_reais;
   if (valor == null) return null;
-  return { ...body, valor };
+  return { pedido: body.pedido, valor };
 }
 
 export function LiveApp({
@@ -76,7 +73,7 @@ export function LiveApp({
     <section className={`relative flex min-h-0 flex-col overflow-hidden rounded-lg border ${tone}`}>
       <div className="flex items-center justify-between border-b border-line/70 px-4 py-2">
         <div>
-          <div className="text-[11px] uppercase tracking-[0.16em] text-mute">demo-app /api</div>
+          <div className="text-[11px] uppercase tracking-[0.16em] text-mute">Checkout</div>
           <div className="text-sm">{title}</div>
         </div>
         <div className="font-mono text-[11px] text-mute">{down ? "Fora do ar" : "Ready"}</div>
@@ -86,15 +83,9 @@ export function LiveApp({
           <div className="text-[11px] uppercase tracking-[0.16em] text-mute">
             {latest?.pedido != null ? `Pedido #${latest.pedido}` : "Aguardando pedido"}
           </div>
-          <div className="mt-1 text-sm text-white">{down ? "—" : latest?.produto || "—"}</div>
           <div className={`mt-2 text-2xl tabular-nums ${down ? "text-bad" : "text-ok"}`}>
             {down ? "—" : formatReais(latest?.valor)}
           </div>
-          <p className="mt-2 text-[11px] text-mute">
-            {down
-              ? "/health não responde. Clique no workload com problema para abrir a análise da IA."
-              : "Novo pedido a cada segundo via GET /api (R$ 1,00 a R$ 350,00)."}
-          </p>
         </div>
         <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-line bg-navy/50">
           {(down ? [] : orders).map((item, index) => (
@@ -102,17 +93,14 @@ export function LiveApp({
               key={`${item.pedido}-${index}`}
               className="flex items-center justify-between gap-3 border-b border-line/60 px-3 py-2 last:border-b-0"
             >
-              <div className="min-w-0">
-                <div className="font-mono text-[11px] text-mute">#{item.pedido}</div>
-                <div className="truncate text-[12px]">{item.produto}</div>
-              </div>
-              <div className={`shrink-0 font-mono text-[12px] ${index === 0 ? "text-ok" : "text-white"}`}>
+              <div className="font-mono text-[12px] text-mute">#{item.pedido}</div>
+              <div className={`font-mono text-[12px] ${index === 0 ? "text-ok" : "text-white"}`}>
                 {formatReais(item.valor)}
               </div>
             </div>
           ))}
           {down || !orders.length ? (
-            <div className="px-3 py-4 text-[12px] text-mute">sem pedidos ainda</div>
+            <div className="px-3 py-4 text-[12px] text-mute">sem pedidos</div>
           ) : null}
         </div>
       </div>

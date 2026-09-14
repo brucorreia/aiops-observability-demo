@@ -61,6 +61,30 @@ class GithubCommitTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status, 403)
         self.assertIn("Contents deve ser Read and write", str(ctx.exception))
 
+    def test_active_workflow_runs_keeps_only_busy(self):
+        def fake_get(url, **_kwargs):
+            self.assertIn("actions/runs", url)
+            return {
+                "workflow_runs": [
+                    {"id": 1, "name": "done", "status": "completed", "html_url": "h1"},
+                    {
+                        "id": 2,
+                        "name": "demo-app",
+                        "status": "in_progress",
+                        "html_url": "h2",
+                        "head_sha": "abcdef123",
+                    },
+                    {"id": 3, "name": "queued", "status": "queued", "html_url": "h3"},
+                ]
+            }
+
+        with patch("collectors.github.get_json", fake_get):
+            runs = github.active_workflow_runs("o/r", "token")
+        self.assertEqual([item["name"] for item in runs], ["demo-app", "queued"])
+
+    def test_active_workflow_runs_empty_without_token(self):
+        self.assertEqual(github.active_workflow_runs("o/r", ""), [])
+
 
 if __name__ == "__main__":
     unittest.main()

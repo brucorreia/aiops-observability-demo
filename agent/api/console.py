@@ -43,6 +43,7 @@ INCIDENT_MESSAGES = {
     "oom-stale": "fix(demo-app): leak memory with a stale deploy timestamp",
 }
 CRASHLOOP_CAUSES = ("crashloop", "oom")
+PIPELINE_WARMUP_SECONDS = 180
 
 
 def utc_now() -> str:
@@ -207,6 +208,8 @@ def cluster_status(cfg: dict[str, Any]) -> dict[str, Any]:
     try:
         _, api_raw = request(DEMO_APP_URL + "/api", timeout=2.0, raise_http_error=False)
         app_api = json.loads(api_raw.decode()) if api_raw else None
+        if isinstance(app_api, dict):
+            app_api.pop("produto", None)
     except (HttpError, ValueError, json.JSONDecodeError):
         app_api = None
 
@@ -229,6 +232,8 @@ def cluster_status(cfg: dict[str, Any]) -> dict[str, Any]:
         image_tag = (image or "").rsplit(":", 1)[-1] if image else ""
         rollout["image_synced"] = bool(short and image_tag.startswith(short))
         store.set_rollout(rollout)
+
+    pipeline = pipeline_status(cfg)
 
     return {
         "cluster": CLUSTER_NAME,
@@ -285,6 +290,7 @@ def cluster_status(cfg: dict[str, Any]) -> dict[str, Any]:
             "unscheduled": [item for item in workloads if not item.get("node")],
         },
         "rollout": rollout,
+        "pipeline": pipeline,
         "analysis": analysis,
         "timeline": build_timeline(rollout, analysis, health, crashing, http_failing),
     }
@@ -465,6 +471,50 @@ def _mode_files(file_mode: str, deployed_at: str, yaml_text: str) -> dict[str, s
     return {MODE_FILE: f"{file_mode}\n", APP_YAML: updated}
 
 
+def _started_seconds_ago(started_at: str | None) -> float | None:
+    if not started_at:
+        return None
+    try:
+        started = datetime.strptime(started_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    return (datetime.now(timezone.utc) - started).total_seconds()
+
+
+def pipeline_status(cfg: dict[str, Any]) -> dict[str, Any]:
+    runs = github.active_workflow_runs(
+        cfg.get("github_repository") or "",
+        cfg.get("github_token") or None,
+        cfg.get("github_api_url") or "https://api.github.com",
+    )
+    if not runs:
+        rollout = store.rollout() or {}
+        workflow = rollout.get("workflow") or {}
+        status = workflow.get("status")
+        warming = _started_seconds_ago(rollout.get("started_at"))
+        real_run = bool(workflow.get("html_url"))
+        recent = warming is not None and 0 <= warming < PIPELINE_WARMUP_SECONDS
+        if status in github.ACTIVE_WORKFLOW_STATUSES and (real_run or recent):
+            runs = [
+                {
+                    "name": workflow.get("name") or WORKFLOW_FILE,
+                    "status": status,
+                    "html_url": workflow.get("html_url"),
+                }
+            ]
+    if not runs:
+        return {"busy": False, "message": None, "run": None}
+    run = runs[0]
+    name = run.get("name") or "GitHub Actions"
+    return {
+        "busy": True,
+        "message": (
+            f"Pipeline {name} em andamento. Nova ação só será possível depois do término."
+        ),
+        "run": run,
+    }
+
+
 def resolve_console_incident(mode: str) -> tuple[str, str, str]:
     """Return (file_mode, deployed_at, commit_message). Console CrashLoop hides the cause."""
     if mode not in INCIDENT_MESSAGES:
@@ -482,6 +532,9 @@ def start_incident(cfg: dict[str, Any], mode: str) -> dict[str, Any]:
     repo = cfg.get("github_repository") or ""
     if not token:
         raise HttpError("GITHUB_TOKEN ausente no Secret ai-agent-llm", status=409)
+    pipeline = pipeline_status(cfg)
+    if pipeline.get("busy"):
+        raise HttpError(pipeline["message"], status=409)
     yaml_text = github.read_file(
         repo, APP_YAML, token, cfg.get("github_api_url") or "https://api.github.com"
     )

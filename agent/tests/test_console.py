@@ -39,13 +39,14 @@ class ConsoleApiTests(unittest.TestCase):
         self.assertEqual(file_mode, "crashloop")
         self.assertEqual(message, "fix(demo-app): induce CrashLoopBackOff")
 
+    @patch("api.console.github.active_workflow_runs", return_value=[])
     @patch("api.console.github.commit_files", return_value={"sha": "abc", "short_sha": "abc"})
     @patch(
         "api.console.github.read_file",
         return_value='aiops.demo/deployed-at: "1970-01-01T00:00:00Z"\n',
     )
     @patch("api.console.random.choice", return_value="oom")
-    def test_start_incident_returns_public_crashloop(self, _choice, _read, commit):
+    def test_start_incident_returns_public_crashloop(self, _choice, _read, commit, _runs):
         result = console.start_incident(
             {"github_token": "t", "github_repository": "o/r"},
             "crashloop",
@@ -54,6 +55,55 @@ class ConsoleApiTests(unittest.TestCase):
         files, message = commit.call_args.args[1], commit.call_args.args[2]
         self.assertEqual(files[console.MODE_FILE], "oom\n")
         self.assertEqual(message, "fix(demo-app): induce CrashLoopBackOff")
+
+    @patch("api.console.github.commit_files")
+    @patch("api.console.github.read_file")
+    @patch(
+        "api.console.github.active_workflow_runs",
+        return_value=[{"name": "demo-app", "status": "in_progress", "html_url": "http://run/1"}],
+    )
+    def test_start_incident_blocked_when_pipeline_running(self, _runs, read_file, commit):
+        with self.assertRaises(HttpError) as ctx:
+            console.start_incident(
+                {"github_token": "t", "github_repository": "o/r"},
+                "crashloop",
+            )
+        self.assertEqual(ctx.exception.status, 409)
+        self.assertIn("Pipeline demo-app em andamento", str(ctx.exception))
+        self.assertIn("depois do término", str(ctx.exception))
+        read_file.assert_not_called()
+        commit.assert_not_called()
+
+    def test_pipeline_status_idle_without_runs(self):
+        with patch("api.console.github.active_workflow_runs", return_value=[]):
+            result = console.pipeline_status({"github_token": "t", "github_repository": "o/r"})
+        self.assertFalse(result["busy"])
+        self.assertIsNone(result["message"])
+
+    def test_pipeline_status_blocks_recent_queued_rollout(self):
+        store.set_rollout(
+            {
+                "sha": "abc",
+                "started_at": console.utc_now(),
+                "workflow": {"status": "queued", "conclusion": None},
+            }
+        )
+        with patch("api.console.github.active_workflow_runs", return_value=[]):
+            result = console.pipeline_status({"github_token": "t", "github_repository": "o/r"})
+        self.assertTrue(result["busy"])
+        self.assertIn("depois do término", result["message"])
+
+    def test_pipeline_status_ignores_fake_queued_without_recent_start(self):
+        store.set_rollout(
+            {
+                "sha": "abc",
+                "started_at": "2020-01-01T00:00:00Z",
+                "workflow": {"status": "queued", "conclusion": None},
+            }
+        )
+        with patch("api.console.github.active_workflow_runs", return_value=[]):
+            result = console.pipeline_status({"github_token": "t", "github_repository": "o/r"})
+        self.assertFalse(result["busy"])
 
     def test_unknown_mode_rejected(self):
         with self.assertRaises(ValueError):

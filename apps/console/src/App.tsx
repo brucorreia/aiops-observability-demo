@@ -98,6 +98,13 @@ export default function App() {
   }
 
   async function onIncident(mode: string) {
+    if (status?.pipeline?.busy) {
+      setError(
+        status.pipeline.message ||
+          "Pipeline em andamento. Nova ação só será possível depois do término.",
+      );
+      return;
+    }
     setBusy(mode === "good" ? "Restaurando a demo-app…" : "Disparando CrashLoop via GitOps…");
     setError(null);
     setSelected(null);
@@ -136,6 +143,8 @@ export default function App() {
         paused={paused}
         busy={busy}
         error={error || pollError}
+        pipelineLocked={Boolean(status?.pipeline?.busy)}
+        pipelineMessage={status?.pipeline?.busy ? status.pipeline.message : null}
         onTogglePause={() => setPaused((value) => !value)}
         onIncident={onIncident}
       />
