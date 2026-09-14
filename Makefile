@@ -25,7 +25,7 @@ STALE_DEPLOY ?= 2026-01-01T00:00:00Z
 .PHONY: help tools doctor setup bootstrap run stop kube-env cluster argocd argocd-ui build monitoring deploy deploy-homelab setup-local \
 	demo-good demo-crashloop demo-oom demo-oom-stale demo-500 \
 	analyze recommendations approve-rollback rollback status \
-	app-logs agent-logs victorialogs vmalert alertmanager test clean
+	app-logs agent-logs victorialogs vmalert alertmanager llm-secret test clean
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "%-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -137,15 +137,20 @@ monitoring: ## Install the pinned VictoriaMetrics/VictoriaLogs stack
 	  --wait --timeout 10m
 
 deploy: ## Point Argo CD at GitHub and wait until it has synced
+	-kubectl delete application aiops -n $(ARGO_NS) --ignore-not-found
 	kubectl apply -k infra/argocd
+	./scripts/apply-llm-secret.sh
 	./scripts/wait-argocd-sync.sh
 	kubectl rollout status deployment/ai-agent -n $(MONITORING_NS) --timeout=180s
 	kubectl rollout status deployment/demo-app -n $(DEMO_NS) --timeout=180s
 
-deploy-homelab: ## Apply Kustomize homelab overlay with GHCR image names
-	@test -n "$(IMAGE_OWNER)" || { echo "Could not derive GitHub owner from origin. Set IMAGE_OWNER."; exit 1; }
-	IMAGE_OWNER=$(IMAGE_OWNER) IMAGE_TAG=$(IMAGE_TAG) ./scripts/write-image-kustomization.sh homelab
-	kubectl apply -k "$(KUSTOMIZE_HOMELAB)"
+llm-secret: ## Create/update the optional OpenAI secret from .env and restart ai-agent
+	./scripts/apply-llm-secret.sh
+
+deploy-homelab: ## Apply the three GitOps apps with the tags already on GitHub
+	kubectl apply -k infra/apps/demo-app
+	kubectl apply -k infra/apps/ai-agent
+	kubectl apply -k infra/apps/load-generator
 	kubectl rollout status deployment/ai-agent -n $(MONITORING_NS) --timeout=180s
 	kubectl rollout status deployment/demo-app -n $(DEMO_NS) --timeout=180s
 

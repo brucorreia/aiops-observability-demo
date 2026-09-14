@@ -1,0 +1,26 @@
+name: load-generator
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "load-generator/**"
+      - "infra/apps/load-generator/**"
+      - ".github/workflows/load-generator.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: load-generator-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Render manifests
+        run: |
+          curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.3/kustomize_v5.4.3_linux_amd64.tar.gz" | tar -xz
+          ./kustomize build infra/apps/load-generator

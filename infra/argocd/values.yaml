@@ -1,4 +1,4 @@
-# Local Argo CD. Workloads are synced from GitHub (infra/apps).
+# Local Argo CD. Each workload is a separate Application under infra/apps/<app>.
 dex:
   enabled: false
 notifications:

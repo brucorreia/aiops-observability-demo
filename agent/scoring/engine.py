@@ -51,6 +51,18 @@ def apply_llm_delta(
     return updated
 
 
+def llm_unavailable_scores() -> dict[str, int]:
+    return clip_and_normalize(
+        {
+            "rollback": 0,
+            "vertical_scale": 0,
+            "horizontal_scale": 0,
+            "investigate": 70,
+            "none": 30,
+        }
+    )
+
+
 def score_quality(missing: list[dict[str, Any]], conflicting: list[str]) -> str:
     names = {item.get("evidence") for item in missing}
     if len(names) >= 3 or conflicting and len(names) >= 2:

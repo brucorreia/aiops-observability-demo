@@ -55,6 +55,10 @@ def settings(config: dict | None = None) -> dict:
         "openai_api_key": os.getenv("OPENAI_API_KEY", "").strip(),
         "openai_base_url": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/"),
         "openai_model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        "llm_timeout_seconds": int((cfg.get("llm") or {}).get("timeout_seconds", 45)),
+        "github_repository": os.getenv("GITHUB_REPOSITORY", "brucorreia/aiops-observability-demo").strip(),
+        "github_api_url": os.getenv("GITHUB_API_URL", "https://api.github.com").rstrip("/"),
+        "github_token": os.getenv("GITHUB_TOKEN", "").strip(),
         "llm_max_adjustment": int((cfg.get("llm") or {}).get("max_adjustment", 10)),
         "weights": cfg.get("scoring") or {},
     }

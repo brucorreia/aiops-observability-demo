@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from collectors import k8s, logs, metrics
+from collectors import github, k8s, logs, metrics
 from collectors.http import HttpError
 from enrichment.normalize import incident_type_for, parse_time
 
@@ -117,6 +117,11 @@ def enrich(alert: dict[str, Any], settings: dict[str, Any]) -> dict[str, Any]:
         "memory_usage_ratio": None,
         "http_500_count": None,
         "related_log_messages": [],
+        "log_entries": [],
+        "log_event_counts": {},
+        "recent_commits": [],
+        "commit_compare": None,
+        "code_changed_in_demo_app": None,
         "pods_ready": None,
         "replicas": None,
         "affected_pods": 0,
@@ -290,47 +295,22 @@ def enrich(alert: dict[str, Any], settings: dict[str, Any]) -> dict[str, Any]:
         missing.append(_unavailable("previous_version_memory"))
 
     log_filter = (
-        'kubernetes.pod_namespace:="aiops-demo" kubernetes.container_name:="demo-app" '
-        '| unpack_json'
+        f'kubernetes.pod_namespace:="{namespace}" kubernetes.container_name:="demo-app" '
+        "| unpack_json"
     )
-    log_result = logs.query_logs(settings["victorialogs_url"], f"{log_filter} | path:=\"/api\"", limit=40)
+    log_result = logs.query_logs(settings["victorialogs_url"], log_filter, limit=60)
     if log_result["status"] != "ok":
         missing.append(_unavailable("application_logs", log_result.get("error")))
         if pods:
             try:
                 fallback = k8s.pod_logs(namespace, (pods[0].get("metadata") or {}).get("name", ""), "demo-app")
                 context["related_log_messages"] = fallback.splitlines()[-20:]
+                context["log_entries"] = _entries_from_raw_lines(context["related_log_messages"])
                 missing.append({"evidence": "application_logs", "status": "fallback_kube_logs"})
             except (HttpError, k8s.KubernetesUnavailable, KeyError):
                 pass
     else:
-        messages = []
-        http_500 = 0
-        external = False
-        after_deploy = 0
-        deployed_at = parse_time(context["last_deployment_at"])
-        for item in log_result["logs"]:
-            msg = item.get("_msg") or json.dumps(item)
-            messages.append(msg[:500])
-            status = item.get("status")
-            try:
-                status_i = int(status) if status is not None else None
-            except (TypeError, ValueError):
-                status_i = None
-            if status_i == 500:
-                http_500 += 1
-                if deployed_at:
-                    log_time = parse_time(item.get("_time") or item.get("timestamp"))
-                    if log_time and log_time >= deployed_at:
-                        after_deploy += 1
-            text = msg.lower()
-            if any(hint in text for hint in EXTERNAL_HINTS):
-                external = True
-        context["related_log_messages"] = messages[:20]
-        context["http_500_count"] = http_500
-        context["external_dependency_errors"] = external
-        if context["failures_started_after_deployment"] is None and deployed_at:
-            context["failures_started_after_deployment"] = after_deploy > 0 and http_500 > 0
+        _apply_log_evidence(context, log_result["logs"], missing)
 
     stats = logs.stats_query(
         settings["victorialogs_url"],
@@ -352,4 +332,101 @@ def enrich(alert: dict[str, Any], settings: dict[str, Any]) -> dict[str, Any]:
     if context["failures_started_after_deployment"] is None and context["recent_deployment"] and last_reason:
         context["failures_started_after_deployment"] = True
 
+    current_sha = context.get("git_sha") if context.get("git_sha") not in {None, "dev"} else github.sha_from_image(
+        context.get("current_image")
+    )
+    previous_sha = github.sha_from_image(context.get("previous_image"))
+    if current_sha:
+        context["git_sha"] = current_sha
+    commit_evidence = github.collect_commit_evidence(
+        settings.get("github_repository") or "",
+        current_sha,
+        previous_sha,
+        token=settings.get("github_token") or None,
+        api_url=settings.get("github_api_url") or "https://api.github.com",
+    )
+    if commit_evidence.get("status") != "ok":
+        missing.append(_unavailable("github_commits", commit_evidence.get("error")))
+    context["recent_commits"] = commit_evidence.get("recent_commits") or []
+    context["commit_compare"] = commit_evidence.get("compare")
+    context["code_changed_in_demo_app"] = commit_evidence.get("touches_demo_app")
+
     return context
+
+
+def _parse_log_item(item: dict[str, Any]) -> dict[str, Any]:
+    raw = item.get("_msg")
+    payload = item
+    if isinstance(raw, str):
+        try:
+            decoded = json.loads(raw)
+            if isinstance(decoded, dict):
+                payload = {**item, **decoded}
+        except json.JSONDecodeError:
+            pass
+    status = payload.get("status")
+    try:
+        status_i = int(status) if status is not None else None
+    except (TypeError, ValueError):
+        status_i = None
+    message = str(payload.get("message") or raw or json.dumps(item))[:400]
+    return {
+        "timestamp": payload.get("timestamp") or payload.get("_time"),
+        "level": payload.get("level"),
+        "event": payload.get("event"),
+        "path": payload.get("path"),
+        "status": status_i,
+        "message": message,
+    }
+
+
+def _entries_from_raw_lines(lines: list[str]) -> list[dict[str, Any]]:
+    entries = []
+    for line in lines:
+        try:
+            parsed = json.loads(line)
+            if isinstance(parsed, dict):
+                entries.append(_parse_log_item(parsed))
+                continue
+        except json.JSONDecodeError:
+            pass
+        entries.append({"message": line[:400], "level": None, "event": None, "status": None, "path": None})
+    return entries[-30:]
+
+
+def _apply_log_evidence(context: dict[str, Any], raw_logs: list[dict[str, Any]], missing: list[dict[str, str]]) -> None:
+    entries = []
+    event_counts: dict[str, int] = {}
+    http_500 = 0
+    external = False
+    after_deploy = 0
+    deployed_at = parse_time(context.get("last_deployment_at"))
+    for item in raw_logs:
+        entry = _parse_log_item(item)
+        entries.append(entry)
+        event = entry.get("event") or "unknown"
+        event_counts[event] = event_counts.get(event, 0) + 1
+        if entry.get("status") == 500:
+            http_500 += 1
+            if deployed_at:
+                log_time = parse_time(entry.get("timestamp"))
+                if log_time and log_time >= deployed_at:
+                    after_deploy += 1
+        text = (entry.get("message") or "").lower()
+        if any(hint in text for hint in EXTERNAL_HINTS):
+            external = True
+    entries.sort(
+        key=lambda item: (
+            0 if item.get("status") == 500 or (item.get("level") or "").lower() == "error" else 1,
+            item.get("timestamp") or "",
+        )
+    )
+    context["related_log_messages"] = [item["message"] for item in entries[:30]]
+    context["log_entries"] = entries[:30]
+    context["log_event_counts"] = event_counts
+    context["http_500_count"] = http_500
+    context["external_dependency_errors"] = external
+    if context.get("failures_started_after_deployment") is None and deployed_at:
+        context["failures_started_after_deployment"] = after_deploy > 0 and http_500 > 0
+    if not entries:
+        missing.append(_unavailable("application_logs"))

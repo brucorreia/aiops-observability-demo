@@ -1,19 +1,15 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../../base
-  - ../../../load-generator
+  - ../../../deploy/demo-app
+images:
+  - name: aiops-demo-app
+    newName: ghcr.io/brucorreia/aiops-demo-app
+    newTag: "ee21f58"
 patches:
   - target:
       kind: Deployment
       name: demo-app
-    patch: |-
-      - op: replace
-        path: /spec/template/spec/containers/0/imagePullPolicy
-        value: Always
-  - target:
-      kind: Deployment
-      name: ai-agent
     patch: |-
       - op: replace
         path: /spec/template/spec/containers/0/imagePullPolicy

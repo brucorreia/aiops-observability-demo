@@ -1,0 +1,45 @@
+name: ai-agent
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "agent/**"
+      - "config/scoring.yaml"
+      - ".github/workflows/ai-agent.yaml"
+      - ".github/workflows/reusable-container-build.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: ai-agent-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/reusable-container-build.yaml
+    with:
+      image_name: aiops-agent
+      context: .
+      file: agent/Dockerfile
+
+  gitops:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Commit Argo image tag
+        env:
+          IMAGE_OWNER: ${{ github.repository_owner }}
+          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_NAME: aiops-agent
+          APP_SLUG: ai-agent
+        run: IMAGE_TAG="${IMAGE_TAG:0:7}" ./scripts/gitops-set-image.sh

@@ -170,7 +170,7 @@ class ScoringTests(unittest.TestCase):
 
         root = Path(__file__).resolve().parents[2]
         config_file = yaml.safe_load((root / "config" / "scoring.yaml").read_text())
-        deploy_file = yaml.safe_load((root / "deploy" / "base" / "scoring.yaml").read_text())
+        deploy_file = yaml.safe_load((root / "deploy" / "ai-agent" / "scoring.yaml").read_text())
         self.assertEqual(config_file, deploy_file)
 
 

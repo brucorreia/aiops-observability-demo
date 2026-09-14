@@ -1,10 +1,9 @@
 recent_deployment_window_minutes: 15
 automatic_execution_allowed: false
 llm:
-  max_adjustment: 10
+  timeout_seconds: 45
 
-# Deterministic weights applied to recommendation_score before normalization.
-# Negative values are allowed here and clipped to 0 after aggregation.
+# Optional SRE playbook hints sent to the LLM. They are not live scores.
 # Keep in sync with config/scoring.yaml.
 scoring:
   recent_deployment:

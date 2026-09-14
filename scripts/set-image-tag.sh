@@ -2,32 +2,35 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FILE="${ROOT}/infra/apps/kustomization.yaml"
 OWNER="${IMAGE_OWNER:?IMAGE_OWNER is required}"
 TAG="${IMAGE_TAG:?IMAGE_TAG is required}"
+NAME="${IMAGE_NAME:?IMAGE_NAME is required}"
+FILE="${KUSTOMIZATION:-}"
 
-python3 - "${FILE}" "${OWNER}" "${TAG}" <<'PY'
+if [[ -z "${FILE}" ]]; then
+  case "${NAME}" in
+    aiops-demo-app) FILE="${ROOT}/infra/apps/demo-app/kustomization.yaml" ;;
+    aiops-agent) FILE="${ROOT}/infra/apps/ai-agent/kustomization.yaml" ;;
+    *)
+      echo "Unknown IMAGE_NAME=${NAME}; set KUSTOMIZATION" >&2
+      exit 1
+      ;;
+  esac
+fi
+
+python3 - "${FILE}" "${OWNER}" "${TAG}" "${NAME}" <<'PY'
 from pathlib import Path
+import re
 import sys
 
-path, owner, tag = sys.argv[1], sys.argv[2], sys.argv[3]
-lines = Path(path).read_text().splitlines(keepends=True)
-out = []
-current = None
-for line in lines:
-    stripped = line.strip()
-    if stripped.startswith("name:"):
-        current = stripped.split(":", 1)[1].strip()
-    if stripped.startswith("newName:") and current == "aiops-demo-app":
-        indent = line[: len(line) - len(line.lstrip())]
-        line = f'{indent}newName: ghcr.io/{owner}/aiops-demo-app\n'
-    elif stripped.startswith("newName:") and current == "aiops-agent":
-        indent = line[: len(line) - len(line.lstrip())]
-        line = f'{indent}newName: ghcr.io/{owner}/aiops-agent\n'
-    elif stripped.startswith("newTag:"):
-        indent = line[: len(line) - len(line.lstrip())]
-        line = f'{indent}newTag: "{tag}"\n'
-    out.append(line)
-Path(path).write_text("".join(out))
-print(f"Updated {path} tag={tag} owner={owner}")
+path, owner, tag, name = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+text = Path(path).read_text()
+pattern = re.compile(
+    rf"(  - name: {re.escape(name)}\n    newName: )[^\n]+(\n    newTag: )[^\n]+"
+)
+updated, count = pattern.subn(rf'\1ghcr.io/{owner}/{name}\2"{tag}"', text, count=1)
+if count != 1:
+    raise SystemExit(f"Could not update image {name} in {path}")
+Path(path).write_text(updated)
+print(f"Updated {path} image={name} tag={tag} owner={owner}")
 PY

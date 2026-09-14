@@ -105,19 +105,32 @@ def recommended_action(scores: dict[str, int], recent: bool | None) -> str:
 
 def lecture_text(analysis: dict[str, Any]) -> str:
     evidence = analysis.get("evidence") or {}
+    llm = analysis.get("llm") or {}
     lines = [
         f"INCIDENTE: {INCIDENT_LABELS.get(analysis.get('incident_type'), analysis.get('incident_type'))}",
         f"WORKLOAD: {evidence.get('deployment') or 'demo-app'}",
         f"VERSÃO ATUAL: {evidence.get('git_sha') or evidence.get('current_image') or 'unknown'}",
         f"DEPLOY REALIZADO HÁ: {evidence.get('minutes_since_deployment', 'unknown')} minutos",
+        f"SCORE: {analysis.get('scoring_source') or 'llm'}",
         "",
         "EVIDÊNCIAS:",
     ]
+    if llm.get("used") and llm.get("summary"):
+        lines.append(f"- {llm['summary']}")
     for rec in analysis.get("recommendations") or []:
         if rec.get("action") != analysis.get("recommended_action"):
             continue
         for reason in rec.get("reasons") or []:
             lines.append(f"- {reason}")
+    commits = evidence.get("recent_commits") or []
+    if commits:
+        lines.append("- Commits recentes:")
+        for item in commits[:5]:
+            lines.append(f"  - {item.get('sha')}: {item.get('message')}")
+    compare = evidence.get("commit_compare") or {}
+    if compare.get("status") == "ok" and compare.get("files"):
+        files = ", ".join(str(item.get("filename")) for item in compare["files"][:8])
+        lines.append(f"- Diff {compare.get('base')}...{compare.get('head')}: {files}")
     if analysis.get("missing_evidence"):
         for item in analysis["missing_evidence"]:
             lines.append(f"- Evidência indisponível: {item.get('evidence')}")
@@ -141,14 +154,19 @@ def markdown(analysis: dict[str, Any]) -> str:
     return "# Incident analysis\n\n```text\n" + lecture_text(analysis) + "\n```\n"
 
 
-def ordered_recommendations(scores: dict[str, int], signals: dict[str, bool]) -> list[dict[str, Any]]:
+def ordered_recommendations(
+    scores: dict[str, int],
+    signals: dict[str, bool],
+    llm_reasons: dict[str, list[str]] | None = None,
+) -> list[dict[str, Any]]:
     items = []
     for action, value in sorted(scores.items(), key=lambda item: (-item[1], ACTIONS.index(item[0]))):
+        cited = [str(item) for item in (llm_reasons or {}).get(action) or [] if str(item).strip()]
         items.append(
             {
                 "action": action,
                 "recommendation_score": value,
-                "reasons": reasons_for(action, signals),
+                "reasons": cited or reasons_for(action, signals),
             }
         )
     return items

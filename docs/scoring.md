@@ -1,17 +1,22 @@
 # Scoring
 
-`recommendation_score` is a prioritization from the evidence that was actually collected. It is not a probability and not mathematical certainty.
+`recommendation_score` is assigned **only by the LLM** from evidence that was actually collected (logs, commits, Kubernetes, metrics). It is not a probability and not mathematical certainty.
 
-Final scores are integers in `[0, 100]` and always sum to `100`. Negative weights exist only in `config/scoring.yaml`; they are clipped before normalization.
+YAML in `config/scoring.yaml` is an optional playbook hint sent to the model. It is not applied as the live score.
 
-## Two layers
+Final scores are integers in `[0, 100]` and always sum to `100`.
 
-1. **Deterministic.** `agent/scoring/signals.py` turns enrichment into booleans. `agent/scoring/engine.py` applies the YAML weights.
-2. **LLM (optional).** If `OPENAI_API_KEY` is set, the model may shift each action by at most `llm.max_adjustment` points. It receives only collected evidence and must not invent metrics, deploys, or logs. With no key, this layer is skipped.
+## LLM only
+
+The agent sends collected logs, Kubernetes evidence, and recent GitHub commits to an OpenAI-compatible chat API. The model assigns the five `recommendation_score` values. It must cite log events and commit SHAs and must not invent evidence.
+
+If `OPENAI_API_KEY` is missing or the model call fails, the agent does **not** fall back to YAML weights. It records `scoring_source: llm_unavailable`, prefers `investigate`, and keeps rollback/scale at 0.
+
+Put `OPENAI_API_KEY` in `.env` and run `make llm-secret` (also invoked by `make deploy`). The key lives in Secret `monitoring/ai-agent-llm`, not in Git. `OPENAI_MODEL` defaults to `gpt-4o-mini`; set `gpt-4o` if you want a stronger model.
 
 ## Temporal rule
 
-`RECENT_DEPLOYMENT_WINDOW_MINUTES` (default `15`) uses `aiops.demo/deployed-at` and ReplicaSet revision metadata. Pod start time is ignored because restarts and reschedules also create new pods.
+The table below is the playbook the model receives as hints, not a lookup table executed in Python.
 
 | Incident | Recent recorded deploy | Preference |
 | --- | --- | --- |

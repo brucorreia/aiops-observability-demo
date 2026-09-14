@@ -29,7 +29,7 @@ VMAlert
 
 - `apps/demo-app` exposes `/health` and `/api`. `DEMO_MODE` selects `good`, `crashloop`, `oom`, or `http500`. There is no custom HTTP Prometheus metric.
 - `load-generator` calls `/api` once per second so log-based HTTP 500 alerts have volume.
-- `agent` receives Alertmanager webhooks, enriches from Kubernetes, VictoriaMetrics, and VictoriaLogs, then writes a recommendation.
+- `agent` receives Alertmanager webhooks, enriches from Kubernetes, VictoriaMetrics, VictoriaLogs, and GitHub commits, then scores **only with the LLM**. Without an API key it records `llm_unavailable` and does not recommend rollback or scale.
 
 ## Deploy identity
 
@@ -44,7 +44,7 @@ The agent also reads ReplicaSet `deployment.kubernetes.io/revision`, current and
 
 ## GitOps
 
-GitHub Actions builds the images, pushes them to GHCR, and commits the new tags into `infra/apps/kustomization.yaml`. Argo CD watches that GitHub path and auto-syncs the application `aiops`. `DEMO_MODE` patches from the demo scripts are ignored so a talk incident is not reverted.
+Each image workflow builds one GHCR image and commits **only that app's** tag under `infra/apps/<app>/kustomization.yaml`. Argo CD Applications `demo-app`, `ai-agent`, and `load-generator` watch those paths independently. `DEMO_MODE` patches from the demo scripts are ignored on `demo-app` so a talk incident is not reverted.
 
 Local and GHCR images carry OCI labels:
 
@@ -56,9 +56,9 @@ Local and GHCR images carry OCI labels:
 ## Agent pipeline
 
 1. **Receive** Alertmanager JSON and normalize `incident_type`.
-2. **Enrich** Deployment, ReplicaSets, pods, events, metrics, and logs. Missing data is marked `status: unavailable`.
+2. **Enrich** Deployment, ReplicaSets, pods, events, metrics, application logs, and recent GitHub commits (compare current vs previous image SHA). Missing data is marked `status: unavailable`.
 3. **Hypothesize** regression, leak, low limit, load, dependency, config, or infrastructure.
-4. **Score** with deterministic weights from `config/scoring.yaml`, then an optional LLM adjustment capped by `llm.max_adjustment`.
+4. **Score** only with the LLM (logs + commits + cluster evidence). YAML weights are hints, not the score. If the LLM is unavailable, the agent recommends investigate and does not roll back or scale.
 5. **Recommend** actions whose `recommendation_score` values sum to 100.
 6. **Execute** only after a human decision. `automatic_execution_allowed` is always `false` in this version.
 

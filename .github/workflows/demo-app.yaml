@@ -1,0 +1,44 @@
+name: demo-app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/demo-app/**"
+      - ".github/workflows/demo-app.yaml"
+      - ".github/workflows/reusable-container-build.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: demo-app-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/reusable-container-build.yaml
+    with:
+      image_name: aiops-demo-app
+      context: apps/demo-app
+      file: apps/demo-app/Dockerfile
+
+  gitops:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Commit Argo image tag
+        env:
+          IMAGE_OWNER: ${{ github.repository_owner }}
+          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_NAME: aiops-demo-app
+          APP_SLUG: demo-app
+        run: IMAGE_TAG="${IMAGE_TAG:0:7}" ./scripts/gitops-set-image.sh

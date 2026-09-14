@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- LLM-only `recommendation_score` from logs, commits, and cluster evidence (YAML weights are hints, not the live score)
+- Optional Secret `ai-agent-llm` from `.env` via `make llm-secret`
+- Isolated GitHub Actions + Argo CD Applications for `demo-app`, `ai-agent`, and `load-generator`
+
 ## [0.1.2] - 2026-09-14
 
 ### Fixed

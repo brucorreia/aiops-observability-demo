@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: load-generator
+  namespace: argocd
+spec:
+  project: aiops
+  source:
+    repoURL: https://github.com/brucorreia/aiops-observability-demo.git
+    targetRevision: HEAD
+    path: infra/apps/load-generator
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: aiops-demo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

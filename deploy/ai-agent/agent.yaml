@@ -64,8 +64,12 @@ spec:
               value: aiops-demo
             - name: SCORING_CONFIG
               value: /app/config/scoring.yaml
-            - name: OPENAI_API_KEY
-              value: ""
+            - name: GITHUB_REPOSITORY
+              value: brucorreia/aiops-observability-demo
+          envFrom:
+            - secretRef:
+                name: ai-agent-llm
+                optional: true
           ports:
             - name: http
               containerPort: 8080

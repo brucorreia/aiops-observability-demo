@@ -13,10 +13,8 @@ from recommendations.format import (
 )
 from recommendations.store import analysis_id, save
 from scoring.engine import (
-    apply_llm_delta,
-    apply_weights,
-    clip_and_normalize,
     conflicting_from_signals,
+    llm_unavailable_scores,
     score_quality,
 )
 from scoring.llm import interpret
@@ -32,12 +30,9 @@ def analyze_alert(alert: dict[str, Any], settings: dict[str, Any]) -> dict[str, 
     if incident_type == "unknown":
         incident_type = alert.get("incident_type") or "unknown"
     signals = derive_signals(incident_type, context)
-    raw_scores = apply_weights(signals, settings["weights"])
-    scores = clip_and_normalize(raw_scores)
     missing = context.get("missing_evidence") or []
     conflicting = conflicting_from_signals(signals)
     hypotheses = generate_hypotheses(incident_type, context, signals)
-    recommendations = ordered_recommendations(scores, signals)
     analysis = {
         "id": analysis_id(incident_type, context.get("deployment") or "demo-app"),
         "incident_type": incident_type,
@@ -46,22 +41,42 @@ def analyze_alert(alert: dict[str, Any], settings: dict[str, Any]) -> dict[str, 
         "evidence": context,
         "signals": signals,
         "hypotheses": hypotheses,
-        "recommendations": recommendations,
-        "recommended_action": recommended_action(scores, context.get("recent_deployment")),
+        "recommendations": [],
+        "recommended_action": "investigate",
         "automatic_execution_allowed": False,
         "score_quality": score_quality(missing, conflicting),
         "missing_evidence": missing,
         "conflicting_evidence": conflicting,
         "llm": {"used": False},
-        "note": "recommendation_score values are a prioritization based on available evidence, not mathematical certainty.",
+        "scoring_source": "llm",
+        "note": "recommendation_score is produced only by the LLM from collected evidence, not by YAML weights.",
     }
     llm = interpret(analysis, settings)
     analysis["llm"] = llm
-    if llm.get("used"):
-        adjusted = apply_llm_delta(scores, llm.get("adjustments"), settings["llm_max_adjustment"])
-        scores = clip_and_normalize(adjusted)
-        analysis["recommendations"] = ordered_recommendations(scores, signals)
+    if llm.get("used") and llm.get("scores"):
+        scores = llm["scores"]
+        analysis["scoring_source"] = "llm"
+        if llm.get("summary"):
+            analysis["summary"] = llm["summary"]
+        analysis["recommendations"] = ordered_recommendations(
+            scores, signals, llm.get("reasons")
+        )
         analysis["recommended_action"] = recommended_action(scores, context.get("recent_deployment"))
+    else:
+        scores = llm_unavailable_scores()
+        note = "; ".join(llm.get("notes") or ["LLM unavailable"])
+        analysis["scoring_source"] = "llm_unavailable"
+        analysis["summary"] = "IA indisponível; nenhuma mudança de cluster foi pontuada"
+        analysis["recommendations"] = ordered_recommendations(
+            scores,
+            signals,
+            {
+                "investigate": [note, "O score deste agente é gerado somente por IA."],
+                "none": ["Sem análise de IA, não há rollback nem escala automáticos."],
+            },
+        )
+        analysis["recommended_action"] = "investigate"
+        analysis["score_quality"] = "low"
     analysis["lecture_text"] = lecture_text(analysis)
     analysis["markdown"] = markdown(analysis)
     return save(analysis)

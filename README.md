@@ -2,7 +2,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/brucorreia/aiops-observability-demo)](https://github.com/brucorreia/aiops-observability-demo/releases)
-[![Images](https://github.com/brucorreia/aiops-observability-demo/actions/workflows/images.yaml/badge.svg)](https://github.com/brucorreia/aiops-observability-demo/actions/workflows/images.yaml)
+[![demo-app](https://github.com/brucorreia/aiops-observability-demo/actions/workflows/demo-app.yaml/badge.svg)](https://github.com/brucorreia/aiops-observability-demo/actions/workflows/demo-app.yaml)
+[![ai-agent](https://github.com/brucorreia/aiops-observability-demo/actions/workflows/ai-agent.yaml/badge.svg)](https://github.com/brucorreia/aiops-observability-demo/actions/workflows/ai-agent.yaml)
+[![load-generator](https://github.com/brucorreia/aiops-observability-demo/actions/workflows/load-generator.yaml/badge.svg)](https://github.com/brucorreia/aiops-observability-demo/actions/workflows/load-generator.yaml)
 
 A reproducible Kubernetes demo where an agent investigates CrashLoopBackOff, OOMKilled, and HTTP 500 logs, then assigns a `recommendation_score` to each possible action. The scores are a prioritization from collected evidence, not mathematical certainty. Automatic execution stays off.
 
@@ -18,7 +20,7 @@ More detail: [docs/architecture.md](docs/architecture.md), [docs/scoring.md](doc
 | `oom` | `make demo-oom` | kube-state-metrics `OOMKilled` + cAdvisor memory |
 | `http500` | `make demo-500` | VictoriaLogs LogsQL on stdout JSON |
 
-`make run` deletes and recreates the k3d cluster named `aiops`, installs Argo CD and VictoriaMetrics/VictoriaLogs `0.85.0`, and lets Argo CD sync the app, agent, and load generator from GitHub (`infra/apps`). Image tags are written by GitHub Actions after they publish to GHCR.
+`make run` deletes and recreates the k3d cluster named `aiops`, installs Argo CD and VictoriaMetrics/VictoriaLogs `0.85.0`, and lets Argo CD sync **three Applications** (`demo-app`, `ai-agent`, `load-generator`) from GitHub. Each app has its own GitHub Actions pipeline and image tag.
 
 Quick start after cloning:
 
@@ -35,7 +37,7 @@ make status
 - [Homebrew](https://brew.sh)
 - A running Docker daemon (`docker info` must succeed). This repo does not start or stop Docker.
 - Python 3.12+ (`python3` on PATH) for `make test` and `make analyze`
-- Optional: an OpenAI-compatible API key if you want the second scoring layer
+- An OpenAI-compatible API key for the agent to score incidents (`OPENAI_API_KEY`)
 
 Install Homebrew if needed:
 
@@ -76,7 +78,7 @@ kubectl get nodes
 
 ## 4. Optional local config
 
-The cluster demo does not need a `.env`. Copy the example only if you want to change windows, URLs, or enable the LLM layer:
+The cluster boots without a `.env`, but the agent **cannot score** until `OPENAI_API_KEY` is in Secret `ai-agent-llm`. Copy the example and load it:
 
 ```bash
 cp .env.example .env
@@ -86,7 +88,17 @@ Useful keys in `.env.example`:
 
 - `RECENT_DEPLOYMENT_WINDOW_MINUTES=15` — what counts as a recent Deployment revision
 - `AUTOMATIC_EXECUTION_ALLOWED=false` — keep this false
-- `OPENAI_API_KEY` — leave empty for deterministic scores only
+- `OPENAI_API_KEY` — required for scoring; without it the agent returns `llm_unavailable`
+- `OPENAI_MODEL` — default `gpt-4o-mini`
+- `GITHUB_TOKEN` — optional if GitHub rate-limits anonymous commit lookups
+
+Load the key into the cluster without committing it:
+
+```bash
+cp .env.example .env
+# edit OPENAI_API_KEY
+make llm-secret
+```
 
 Do not commit `.env`, tokens, or kubeconfigs.
 
@@ -132,7 +144,7 @@ make test
 make cluster       # delete+create k3d cluster aiops + isolated kubeconfig
 make argocd        # Helm argo-cd 10.9.0
 make monitoring    # Helm victoria-metrics-k8s-stack 0.85.0
-make deploy        # Argo CD Application pointing at this GitHub repo
+make deploy        # Argo CD Applications for demo-app, ai-agent, load-generator
 ```
 
 Expect several minutes. Helm `--wait` for the monitoring stack can take up to 10 minutes on the first run.
@@ -148,13 +160,21 @@ make run
 
 **cluster.** Deletes any existing k3d cluster named `aiops`, creates 1 server + 1 agent from `cluster/k3d.yaml`, publishes `localhost:8080` → the k3d load balancer, and writes `.kube/config` with a single context `k3d-aiops`. Every `make run` starts this cluster from scratch so Argo CD cannot keep a stale local Application.
 
-**argocd.** Installs Argo CD in namespace `argocd`. The application `aiops` auto-syncs `infra/apps` from `https://github.com/brucorreia/aiops-observability-demo.git`. `make argocd-ui` port-forwards http://localhost:8088 (user `admin`).
+**argocd.** Installs Argo CD in namespace `argocd`. Three Applications auto-sync independent Git paths: `infra/apps/demo-app`, `infra/apps/ai-agent`, and `infra/apps/load-generator`. `make argocd-ui` port-forwards http://localhost:8088 (user `admin`).
 
 **monitoring.** Adds the VictoriaMetrics Helm repo and installs release `vmks` in namespace `monitoring` with `monitoring/values-common.yaml` + `monitoring/values-local.yaml` (`local-path` PVCs, 1 Gi, 1 day retention, no Grafana).
 
-**deploy.** Applies the Argo CD Application/AppProject and waits until the cluster matches `infra/apps` on GitHub. Incident commands (`make demo-crashloop` and the others) still patch `DEMO_MODE` in-cluster; Argo ignores those fields so it does not revert the demo.
+**deploy.** Applies the Argo CD AppProject and the three Applications, then waits until each is Synced/Healthy. Incident commands (`make demo-crashloop` and the others) still patch `DEMO_MODE` in-cluster; Argo ignores those fields on `demo-app` so it does not revert the demo.
 
-A push to `main` that changes the app or agent runs `.github/workflows/images.yaml`: it publishes `linux/amd64` and `linux/arm64` images `ghcr.io/<owner>/aiops-demo-app:<sha>` and `ghcr.io/<owner>/aiops-agent:<sha>` (no `latest`), then commits the new tags into `infra/apps/kustomization.yaml`. Argo CD sees that commit and rolls the cluster. Until that pipeline has succeeded, pods may stay `ImagePullBackOff`.
+This is a monorepo with isolated pipelines:
+
+| Change in | Workflow | Argo Application | Rolls |
+| --- | --- | --- | --- |
+| `apps/demo-app/**` | `demo-app.yaml` | `demo-app` | only `demo-app` image tag |
+| `agent/**` or `config/scoring.yaml` | `ai-agent.yaml` | `ai-agent` | only `ai-agent` image tag |
+| `load-generator/**` | `load-generator.yaml` (validate) | `load-generator` | only the curl generator |
+
+Each image workflow publishes `linux/amd64` and `linux/arm64` to `ghcr.io/<owner>/<image>:<sha>` (no `latest`) and commits **only that app's** `infra/apps/<app>/kustomization.yaml`. Until the matching pipeline has succeeded, that app may stay `ImagePullBackOff`.
 
 ## 8. Confirm the cluster
 
@@ -251,7 +271,7 @@ make run
 
 ## Homelab
 
-`monitoring/values-homelab.yaml` uses Longhorn instead of `local-path`. Image tags on GitHub are already set by the `images` workflow; a homelab that also runs Argo CD will pick them up from `infra/apps`.
+`monitoring/values-homelab.yaml` uses Longhorn instead of `local-path`. Image tags on GitHub are already set by the per-app workflows; a homelab that also runs Argo CD will pick them up from `infra/apps/<app>`.
 
 To apply without Argo:
 
@@ -268,15 +288,17 @@ make deploy-homelab
 ## Layout
 
 ```text
-.github/workflows/   GHCR multi-arch builds + Argo image-tag commit
+.github/workflows/   One pipeline per app (demo-app, ai-agent, load-generator)
 apps/demo-app/       Demo API
-agent/               Collectors, enrichment, scoring, API
+agent/               Collectors, enrichment, LLM scoring, API
 cluster/             k3d
-infra/               Argo CD app + the image tags Argo syncs
-deploy/              Kustomize base + local/homelab overlays
+infra/argocd/        Three Argo CD Applications
+infra/apps/<app>/    Image tags Argo syncs per app
+deploy/demo-app/     demo-app manifests
+deploy/ai-agent/     ai-agent manifests + scoring ConfigMap
 load-generator/      Traffic for log-based HTTP 500
 monitoring/          VictoriaMetrics k8s-stack 0.85.0 values
-config/scoring.yaml  Weights
+config/scoring.yaml  Playbook hints for the LLM (not live scores)
 docs/                Architecture, scoring, talk script, incident output
 ```
 
