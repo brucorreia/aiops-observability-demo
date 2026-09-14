@@ -1,11 +1,9 @@
-import { Activity, Bug, Flame, Maximize2, Pause, Play, ShieldCheck } from "lucide-react";
+import { Activity, Maximize2, Pause, Play, ServerCrash, ShieldCheck } from "lucide-react";
 import type { ClusterStatus } from "./types";
 import { clock } from "./format";
 
 const INCIDENTS = [
-  { mode: "oom", label: "OOM recente", icon: Flame },
-  { mode: "oom-stale", label: "OOM antigo", icon: Flame },
-  { mode: "http500", label: "HTTP 500", icon: Bug },
+  { mode: "crashloop", label: "CrashLoop", icon: ServerCrash },
   { mode: "good", label: "Saudável", icon: ShieldCheck },
 ] as const;
 

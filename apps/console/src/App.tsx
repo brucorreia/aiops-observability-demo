@@ -84,7 +84,7 @@ export default function App() {
   }, [selected]);
 
   async function onIncident(mode: string) {
-    setBusy(`Disparando ${mode} via GitOps…`);
+    setBusy(mode === "good" ? "Restaurando a demo-app…" : "Disparando CrashLoop via GitOps…");
     setError(null);
     try {
       await startIncident(mode);

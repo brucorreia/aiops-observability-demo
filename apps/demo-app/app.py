@@ -18,6 +18,7 @@ def load_mode() -> str:
 
 
 MODE = load_mode()
+PUBLIC_MODE = "crashloop" if MODE in {"crashloop", "oom"} else MODE
 PORT = int(os.getenv("PORT", "8080"))
 SERVICE = os.getenv("SERVICE_NAME", "demo-app")
 HELD: list[bytearray] = []
@@ -35,7 +36,7 @@ def log_event(**fields) -> None:
         "timestamp": utc_now(),
         "service": SERVICE,
         "logger": "demo-app",
-        "version": MODE,
+        "version": PUBLIC_MODE,
         **fields,
     }
     print(json.dumps(payload), flush=True)
@@ -89,7 +90,7 @@ class Handler(BaseHTTPRequestHandler):
                 json.dumps(
                     {
                         "status": status,
-                        "version": MODE,
+                        "version": PUBLIC_MODE,
                         "checkout_reais": checkout_reais(),
                         "currency": "BRL",
                     }

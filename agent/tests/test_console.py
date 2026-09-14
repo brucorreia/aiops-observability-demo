@@ -25,6 +25,36 @@ class ConsoleApiTests(unittest.TestCase):
         self.assertEqual(files[console.MODE_FILE], "crashloop\n")
         self.assertIn("2026-09-14T19:00:00Z", files[console.APP_YAML])
 
+    def test_console_crashloop_hides_oom_cause(self):
+        with patch("api.console.random.choice", return_value="oom"):
+            file_mode, deployed_at, message = console.resolve_console_incident("crashloop")
+        self.assertEqual(file_mode, "oom")
+        self.assertNotEqual(deployed_at, "2026-01-01T00:00:00Z")
+        self.assertEqual(message, "fix(demo-app): induce CrashLoopBackOff")
+        self.assertNotIn("OOM", message)
+
+    def test_console_crashloop_hides_startup_cause(self):
+        with patch("api.console.random.choice", return_value="crashloop"):
+            file_mode, _, message = console.resolve_console_incident("crashloop")
+        self.assertEqual(file_mode, "crashloop")
+        self.assertEqual(message, "fix(demo-app): induce CrashLoopBackOff")
+
+    @patch("api.console.github.commit_files", return_value={"sha": "abc", "short_sha": "abc"})
+    @patch(
+        "api.console.github.read_file",
+        return_value='aiops.demo/deployed-at: "1970-01-01T00:00:00Z"\n',
+    )
+    @patch("api.console.random.choice", return_value="oom")
+    def test_start_incident_returns_public_crashloop(self, _choice, _read, commit):
+        result = console.start_incident(
+            {"github_token": "t", "github_repository": "o/r"},
+            "crashloop",
+        )
+        self.assertEqual(result["mode"], "crashloop")
+        files, message = commit.call_args.args[1], commit.call_args.args[2]
+        self.assertEqual(files[console.MODE_FILE], "oom\n")
+        self.assertEqual(message, "fix(demo-app): induce CrashLoopBackOff")
+
     def test_unknown_mode_rejected(self):
         with self.assertRaises(ValueError):
             console.start_incident({"github_token": "x", "github_repository": "o/r"}, "nope")

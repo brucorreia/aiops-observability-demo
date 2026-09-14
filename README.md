@@ -16,9 +16,9 @@ More detail: [docs/architecture.md](docs/architecture.md), [docs/scoring.md](doc
 
 | Mode | Console / command | Signal |
 | --- | --- | --- |
-| `oom` | OOM recente / `make demo-oom` | kube-state-metrics `OOMKilled` + cAdvisor memory |
-| `http500` | HTTP 500 / `make demo-500` | VictoriaLogs LogsQL on stdout JSON |
-| `crashloop` | `make demo-crashloop` only | kube-state-metrics `CrashLoopBackOff` |
+| `crashloop` | CrashLoop on the console (cause is hidden) | kube-state-metrics `CrashLoopBackOff` or `OOMKilled` |
+| `oom` | `make demo-oom` | kube-state-metrics `OOMKilled` + cAdvisor memory |
+| `http500` | `make demo-500` | VictoriaLogs LogsQL on stdout JSON |
 
 `make run` deletes and recreates the k3d cluster named `aiops`, installs Argo CD and VictoriaMetrics/VictoriaLogs `0.85.0`, and lets Argo CD sync **three Applications** (`demo-app`, `ai-agent`, `load-generator`) from GitHub. Each app has its own GitHub Actions pipeline and image tag.
 
@@ -203,25 +203,15 @@ kubectl get vmrule -n monitoring
 
 Use three terminals if you want live output: commands, `make agent-logs`, `make app-logs`.
 
-Wait until pods are Ready before switching modes. Open `make console` (http://localhost:8082) for the operator UI: OOM recente, OOM antigo, HTTP 500, and Saudável. The AI column appears only after a cluster problem is identified. Remediation is manual unless `AUTOMATIC_EXECUTION_ALLOWED` is true.
+Wait until pods are Ready before switching modes. Open `make console` (http://localhost:8082) for the operator UI: **CrashLoop** and **Saudável**. CrashLoop randomly bakes either a silent startup exit or an OOM leak; the console does not say which. The AI column appears after the alert and names the cause with a scored action. Remediation is manual unless `AUTOMATIC_EXECUTION_ALLOWED` is true.
 
 ```bash
 source .kube/env
-make console      # operator UI; buttons commit the same GitOps incidents
-make agent-logs   # in another terminal: scores; execution stays skipped while the flag is false
-
-# 1. OOM after a recent deploy (rollback should outrank vertical scale)
-make demo-oom
-
-# 2. Same OOM, old deploy annotation (vertical scale / investigate should lead)
-make demo-oom-stale
-
-# 3. HTTP 500 from logs; /health stays 200, checkout_reais still increments
-make demo-good
-make demo-500
+make console      # operator UI; CrashLoop commits a surprise GitOps incident
+make agent-logs   # scores; execution stays skipped while the flag is false
 ```
 
-Each `make demo-*` (or console button) commits `apps/demo-app/demo_mode`, pushes `main`, and waits for GitHub Actions + Argo CD. That is the failed deploy: a real git SHA and a new image tag. The working tree must be clean. After the roll, wait 15–40 seconds for the alert; there is no `make analyze`. `make demo-crashloop` still exists for a CrashLoopBackOff talk, but it is not on the console.
+`make demo-oom`, `make demo-crashloop`, and `make demo-500` still exist for an explicit talk, but they are not on the console.
 
 ## 10. Inspect telemetry
 

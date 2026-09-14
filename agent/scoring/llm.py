@@ -23,7 +23,7 @@ Rules:
 - Do not invent metrics, deploys, logs, commits, files, revisions, or termination reasons.
 - If evidence is marked unavailable, treat it as unknown. Do not assume it exists.
 - A new pod is not a deploy. Use recorded Deployment revision, image tag, git SHA, and commit compare.
-- CrashLoopBackOff and OOMKilled are cluster facts (waiting/terminated reason, restart count, kube events, memory limit vs working set). Do not expect application logs for those incidents.
+- CrashLoopBackOff is a symptom, not the cause. Distinguish OOMKilled (cgroup memory) from Error/startup exit using last_termination_reason, kube events, restart count, and memory limit vs working set. Do not guess from the alert name alone. Do not expect application logs for those incidents.
 - HTTP 500 is a log signal: pods can stay Ready while /api stdout shows status 500.
 - Prefer rollback when failures started after a commit/rollout that changed the failing app (especially apps/demo-app).
 - Prefer vertical_scale for OOM without a recent app change, or when memory hits the limit without a leak-vs-traffic story that needs more replicas.

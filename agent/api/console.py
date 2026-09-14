@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import re
 import time
 from datetime import datetime, timezone
@@ -36,11 +37,12 @@ MIME = {
 }
 INCIDENT_MESSAGES = {
     "good": "fix(demo-app): restore healthy mode",
-    "crashloop": "fix(demo-app): fail startup (CrashLoopBackOff)",
+    "crashloop": "fix(demo-app): induce CrashLoopBackOff",
     "oom": "fix(demo-app): leak memory (OOMKilled)",
     "http500": "fix(demo-app): return HTTP 500 on /api",
     "oom-stale": "fix(demo-app): leak memory with a stale deploy timestamp",
 }
+CRASHLOOP_CAUSES = ("crashloop", "oom")
 
 
 def utc_now() -> str:
@@ -91,10 +93,8 @@ def _pod_status(pod: dict[str, Any]) -> dict[str, Any]:
         terminated = ((item.get("state") or {}).get("terminated") or {})
         last = ((item.get("lastState") or {}).get("terminated") or {})
         reason = waiting.get("reason") or terminated.get("reason") or last.get("reason") or reason
-    if reason == "CrashLoopBackOff":
+    if reason in {"CrashLoopBackOff", "OOMKilled", "Error"}:
         badge = "CrashLoopBackOff"
-    elif reason == "OOMKilled":
-        badge = "OOMKilled"
     elif phase == "Pending":
         badge = "Pending"
     elif ready:
@@ -454,7 +454,7 @@ def collect_logs(cfg: dict[str, Any], source: str = "demo-app") -> dict[str, Any
     return {"status": "ok" if entries else result.get("status") or "ok", "source": source, "logs": entries[-80:]}
 
 
-def _mode_files(mode: str, deployed_at: str, yaml_text: str) -> dict[str, str]:
+def _mode_files(file_mode: str, deployed_at: str, yaml_text: str) -> dict[str, str]:
     updated = re.sub(
         r'(aiops\.demo/deployed-at: )"[^"]*"',
         rf'\1"{deployed_at}"',
@@ -462,29 +462,34 @@ def _mode_files(mode: str, deployed_at: str, yaml_text: str) -> dict[str, str]:
     )
     if updated == yaml_text:
         raise ValueError("could not update deployed-at")
-    file_mode = "oom" if mode == "oom-stale" else mode
     return {MODE_FILE: f"{file_mode}\n", APP_YAML: updated}
 
 
-def start_incident(cfg: dict[str, Any], mode: str) -> dict[str, Any]:
+def resolve_console_incident(mode: str) -> tuple[str, str, str]:
+    """Return (file_mode, deployed_at, commit_message). Console CrashLoop hides the cause."""
     if mode not in INCIDENT_MESSAGES:
         raise ValueError("unknown mode")
+    if mode == "crashloop":
+        return random.choice(CRASHLOOP_CAUSES), utc_now(), INCIDENT_MESSAGES["crashloop"]
+    if mode == "oom-stale":
+        return "oom", "2026-01-01T00:00:00Z", INCIDENT_MESSAGES[mode]
+    return mode, utc_now(), INCIDENT_MESSAGES[mode]
+
+
+def start_incident(cfg: dict[str, Any], mode: str) -> dict[str, Any]:
+    file_mode, deployed_at, message = resolve_console_incident(mode)
     token = (cfg.get("github_token") or "").strip()
     repo = cfg.get("github_repository") or ""
     if not token:
         raise HttpError("GITHUB_TOKEN ausente no Secret ai-agent-llm", status=409)
-    if mode == "oom-stale":
-        deployed_at = "2026-01-01T00:00:00Z"
-    else:
-        deployed_at = utc_now()
     yaml_text = github.read_file(
         repo, APP_YAML, token, cfg.get("github_api_url") or "https://api.github.com"
     )
-    files = _mode_files(mode, deployed_at, yaml_text)
+    files = _mode_files(file_mode, deployed_at, yaml_text)
     commit = github.commit_files(
         repo,
         files,
-        INCIDENT_MESSAGES[mode],
+        message,
         token,
         cfg.get("github_api_url") or "https://api.github.com",
     )

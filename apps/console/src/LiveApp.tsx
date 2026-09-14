@@ -41,11 +41,10 @@ export function LiveApp({ reloadKey }: { reloadKey: number }) {
     };
   }, [reloadKey]);
 
-  const failing = api?.status === 500;
   const amount = api?.checkout_reais;
-  const title =
-    health === "down" ? "Serviço indisponível" : failing ? "Falha no checkout" : "Checkout operacional";
-  const tone = health === "down" || failing ? "border-bad/50 bg-bad/10" : "border-ok/40 bg-ok/10";
+  const down = health === "down";
+  const title = down ? "Checkout indisponível" : "Checkout operacional";
+  const tone = down ? "border-bad/50 bg-bad/10" : "border-ok/40 bg-ok/10";
 
   return (
     <section className={`relative flex min-h-0 flex-col overflow-hidden rounded-lg border ${tone}`}>
@@ -54,26 +53,22 @@ export function LiveApp({ reloadKey }: { reloadKey: number }) {
           <div className="text-[11px] uppercase tracking-[0.16em] text-mute">demo-app</div>
           <div className="text-sm">{title}</div>
         </div>
-        <div className="font-mono text-[11px] text-mute">mode {api?.version || "—"}</div>
+        <div className="font-mono text-[11px] text-mute">{down ? "Fora do ar" : "Ready"}</div>
       </div>
       <div className="flex flex-1 items-center justify-center p-6">
         <div className="w-full max-w-sm rounded-lg border border-line bg-panel p-5">
           <div className="text-[11px] uppercase tracking-[0.16em] text-mute">Pedido #4821</div>
-          <div className={`mt-2 text-2xl tabular-nums ${failing || health === "down" ? "text-bad" : "text-ok"}`}>
-            {health === "down" ? "—" : formatReais(amount)}
+          <div className={`mt-2 text-2xl tabular-nums ${down ? "text-bad" : "text-ok"}`}>
+            {down ? "—" : formatReais(amount)}
           </div>
           <div className="mt-1 text-[11px] text-mute">+ R$ 7,00 / s via /api</div>
           <div className="mt-4 h-2 rounded bg-navy">
-            <div
-              className={`h-2 rounded ${health === "down" ? "w-1/5 bg-bad" : failing ? "w-2/5 bg-bad" : "w-4/5 bg-ok"}`}
-            />
+            <div className={`h-2 rounded ${down ? "w-1/5 bg-bad" : "w-4/5 bg-ok"}`} />
           </div>
           <p className="mt-4 text-[12px] leading-5 text-mute">
-            {health === "down"
-              ? "/health não responde. O pod foi OOMKilled ou está fora do ar."
-              : failing
-                ? "/health continua 200, mas /api devolveu HTTP 500 — o alerta vem do log."
-                : "/health e /api responderam 200. O valor do checkout sobe a cada segundo."}
+            {down
+              ? "/health não responde. O pod não fica Ready — a causa entra na análise da IA depois do alerta."
+              : "/health e /api responderam 200. O valor do checkout sobe a cada segundo."}
           </p>
         </div>
       </div>
