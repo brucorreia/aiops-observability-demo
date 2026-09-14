@@ -28,18 +28,12 @@ VMAlert
 
 - `apps/demo-app` exposes `/health` and `/api`. `DEMO_MODE` selects `good`, `crashloop`, `oom`, or `http500`. There is no custom HTTP Prometheus metric.
 - `load-generator` calls `/api` once per second so log-based HTTP 500 alerts have volume.
+- `agent` receives Alertmanager webhooks after a GitOps roll of `demo-app`. Demo incidents are git commits (`apps/demo-app/demo_mode`) plus an Argo CD image sync, not in-cluster `kubectl patch`.
 - `agent` receives Alertmanager webhooks, enriches from Kubernetes, VictoriaMetrics, VictoriaLogs, and GitHub commits, then scores **only with the LLM**. Without an API key it records `llm_unavailable` and does not recommend rollback or scale.
 
 ## Deploy identity
 
-A new pod is not treated as a deploy. Pipelines and `scripts/set-demo-mode.sh` write:
-
-- `aiops.demo/git-sha`
-- `aiops.demo/deployed-at`
-- `aiops.demo/image`
-- `kubernetes.io/change-cause`
-
-The agent also reads ReplicaSet `deployment.kubernetes.io/revision`, current and previous images, and `DEMO_MODE` on those revisions.
+A new pod is not treated as a deploy. `scripts/set-demo-mode.sh` commits `demo_mode` and `aiops.demo/deployed-at`, then Argo CD rolls the published image. The agent also reads ReplicaSet `deployment.kubernetes.io/revision`, current and previous images, and GitHub commits.
 
 ## GitOps
 

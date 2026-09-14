@@ -225,7 +225,7 @@ make demo-good
 make demo-500
 ```
 
-Wait 15–40 seconds after the fault is visible. VMAlert fires, Alertmanager calls the agent, and the score plus any cluster change show up on `make agent-logs`. There is no `make analyze`: the demo does not invent incidents without an alert.
+Each `make demo-*` commits `apps/demo-app/demo_mode`, pushes `main`, and waits for GitHub Actions + Argo CD. That is the failed deploy: a real git SHA and a new image tag. The working tree must be clean. After the roll, wait 15–40 seconds for the alert; there is no `make analyze`.
 
 ## 10. Inspect telemetry
 

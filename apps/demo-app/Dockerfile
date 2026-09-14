@@ -11,7 +11,7 @@ LABEL org.opencontainers.image.source="${SOURCE_URL}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.version="${VERSION}"
 
-COPY app.py /app/app.py
+COPY app.py demo_mode /app/
 USER 65532:65532
 EXPOSE 8080
 CMD ["python", "-u", "/app/app.py"]

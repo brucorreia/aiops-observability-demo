@@ -5,8 +5,20 @@ import threading
 import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
-MODE = os.getenv("DEMO_MODE", "good")
+
+def load_mode() -> str:
+    env = (os.getenv("DEMO_MODE") or "").strip()
+    if env:
+        return env
+    path = Path(__file__).with_name("demo_mode")
+    if path.exists():
+        return path.read_text(encoding="utf-8").strip() or "good"
+    return "good"
+
+
+MODE = load_mode()
 PORT = int(os.getenv("PORT", "8080"))
 SERVICE = os.getenv("SERVICE_NAME", "demo-app")
 CHUNKS: list[bytearray] = []

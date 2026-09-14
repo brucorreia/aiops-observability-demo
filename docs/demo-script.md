@@ -13,7 +13,9 @@ source .kube/env
 make status
 ```
 
-Watch `make agent-logs`. Alerts fire on their own (about 15–40 seconds after the fault is visible). The agent scores the webhook and applies rollback or scale when the LLM recommends it.
+Watch `make agent-logs`. Each `make demo-*` **commits and pushes** a change to `apps/demo-app/demo_mode`, waits for the `demo-app` image workflow, then Argo CD rolls the new image. Alerts fire on their own (about 15–40 seconds after that roll). The agent scores the webhook and applies rollback or scale when the LLM recommends it.
+
+The working tree must be clean. First run takes about a minute (GHCR build).
 
 ## 1. CrashLoopBackOff after a deploy
 

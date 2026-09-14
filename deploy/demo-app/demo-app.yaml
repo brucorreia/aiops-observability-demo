@@ -28,8 +28,6 @@ spec:
           image: aiops-demo-app:dev
           imagePullPolicy: IfNotPresent
           env:
-            - name: DEMO_MODE
-              value: good
             - name: SERVICE_NAME
               value: demo-app
           ports:

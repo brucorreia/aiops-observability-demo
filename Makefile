@@ -154,19 +154,19 @@ deploy-homelab: ## Apply the three GitOps apps with the tags already on GitHub
 	kubectl rollout status deployment/ai-agent -n $(MONITORING_NS) --timeout=180s
 	kubectl rollout status deployment/demo-app -n $(DEMO_NS) --timeout=180s
 
-demo-good: ## Roll out the healthy version
+demo-good: ## Commit+push healthy demo-app and wait for Argo CD
 	./scripts/set-demo-mode.sh good
 
-demo-crashloop: ## Roll out CrashLoopBackOff
+demo-crashloop: ## Commit+push CrashLoopBackOff and wait for the GitOps roll
 	./scripts/set-demo-mode.sh crashloop
 
-demo-oom: ## Roll out OOMKilled with a recent deploy annotation
+demo-oom: ## Commit+push OOMKilled with a recent deploy timestamp
 	./scripts/set-demo-mode.sh oom
 
-demo-oom-stale: ## Roll out OOMKilled with an old deploy timestamp
+demo-oom-stale: ## Commit+push OOMKilled with an old deploy timestamp
 	./scripts/set-demo-mode.sh oom $(STALE_DEPLOY)
 
-demo-500: ## Roll out HTTP 500 logs while /health stays green
+demo-500: ## Commit+push HTTP 500 logs while /health stays green
 	./scripts/set-demo-mode.sh http500
 
 recommendations: ## Print the latest lecture-friendly recommendation from a firing alert

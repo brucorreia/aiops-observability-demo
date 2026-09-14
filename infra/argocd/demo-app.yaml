@@ -12,18 +12,9 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: aiops-demo
-  ignoreDifferences:
-    - group: apps
-      kind: Deployment
-      name: demo-app
-      jsonPointers:
-        - /spec/template/spec/containers/0/env
-        - /metadata/annotations
-        - /spec/template/metadata/annotations
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      - RespectIgnoreDifferences=true
