@@ -19,9 +19,19 @@ EXECUTION_COOLDOWN_SECONDS = 600
 
 
 def apply_recommendation(analysis: dict[str, Any]) -> dict[str, Any]:
-    decision = execute_mod.automatic_decision(analysis)
     ident = analysis.get("id") or ""
     incident = analysis.get("incident_type") or "unknown"
+    if not analysis.get("automatic_execution_allowed"):
+        payload = {
+            "event": "automatic_execution_skipped",
+            "id": ident,
+            "recommended_action": analysis.get("recommended_action"),
+            "reason": "automatic_execution_disabled",
+        }
+        print(json.dumps(payload, ensure_ascii=False), flush=True)
+        store.emit(**payload)
+        return analysis
+    decision = execute_mod.automatic_decision(analysis)
     if not decision:
         reason = "investigate_or_none" if analysis.get("scoring_source") == "llm" else "llm_unavailable"
         payload = {

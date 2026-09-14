@@ -21,12 +21,13 @@ VMAlert
     → collect context
     → score alternatives
     → recommend
-    → automatic rollback or scale
+    → execute only if AUTOMATIC_EXECUTION_ALLOWED=true
+      (otherwise the operator uses the console Execute button)
 ```
 
 ## Workloads
 
-- `apps/demo-app` mode comes from `apps/demo-app/demo_mode` baked into the image. `crashloop` exits immediately (CrashLoopBackOff). `oom` fills RSS until the 32Mi cgroup limit (OOMKilled). `http500` keeps the pod Ready and writes HTTP 500 on `/api` stdout. There is no custom HTTP Prometheus metric.
+- `apps/demo-app` mode comes from `apps/demo-app/demo_mode` baked into the image. `crashloop` exits immediately (CrashLoopBackOff). `oom` fills RSS until the 32Mi cgroup limit (OOMKilled). `http500` keeps the pod Ready and writes HTTP 500 on `/api` stdout. `/api` always returns `checkout_reais`, which grows R$ 7.00 per second from process start. There is no custom HTTP Prometheus metric.
 - `load-generator` calls `/api` once per second so log-based HTTP 500 alerts have volume.
 - `agent` receives Alertmanager webhooks after a GitOps roll of `demo-app`. Demo incidents are git commits (`apps/demo-app/demo_mode`) plus an Argo CD image sync, not in-cluster `kubectl patch`.
 - `agent` receives Alertmanager webhooks, enriches from Kubernetes, VictoriaMetrics, VictoriaLogs, and GitHub commits, then scores **only with the LLM**. Without an API key it records `llm_unavailable` and does not recommend rollback or scale.
@@ -53,7 +54,7 @@ Local and GHCR images carry OCI labels:
 3. **Hypothesize** regression, leak, low limit, load, dependency, config, or infrastructure.
 4. **Score** only with the LLM (logs + commits + cluster evidence). YAML weights are hints, not the score. If the LLM is unavailable, the agent recommends investigate and does not roll back or scale.
 5. **Recommend** actions whose `recommendation_score` values sum to 100.
-6. **Execute** the recommended rollback or scale automatically when the LLM scored a firing Alertmanager alert. `investigate` and `none` do not change the cluster. If the LLM is unavailable, nothing is applied.
+6. **Execute** rollback or scale only when `AUTOMATIC_EXECUTION_ALLOWED` is true and the LLM scored a firing Alertmanager alert. The default is false: the operator decides in the console. `investigate` and `none` do not change the cluster. If the LLM is unavailable, nothing is applied.
 
 ## Storage
 

@@ -236,6 +236,7 @@ def cluster_status(cfg: dict[str, Any]) -> dict[str, Any]:
         "updated_at": utc_now(),
         "health": health,
         "error": error,
+        "automatic_execution_allowed": bool(cfg.get("automatic_execution_allowed")),
         "connections": {
             "kubernetes": k8s_ok,
             "argocd": _probe(ARGO_HEALTH_URL),

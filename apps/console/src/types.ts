@@ -67,6 +67,7 @@ export type ClusterStatus = {
   environment: string;
   updated_at: string;
   health: "Healthy" | "Degraded" | string;
+  automatic_execution_allowed?: boolean;
   error?: string | null;
   connections: ConnectionMap;
   nodes: { ready: number; total: number; items: Array<{ name: string; ready: boolean }> };
@@ -82,7 +83,7 @@ export type ClusterStatus = {
     deployed_at?: string;
     mode?: string;
     health?: { status?: string } | null;
-    api?: { status?: number; version?: string } | null;
+    api?: { status?: number; version?: string; checkout_reais?: number; currency?: string } | null;
   };
   workloads: Workload[];
   topology: {

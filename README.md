@@ -6,7 +6,7 @@
 [![ai-agent](https://github.com/brucorreia/aiops-observability-demo/actions/workflows/ai-agent.yaml/badge.svg)](https://github.com/brucorreia/aiops-observability-demo/actions/workflows/ai-agent.yaml)
 [![load-generator](https://github.com/brucorreia/aiops-observability-demo/actions/workflows/load-generator.yaml/badge.svg)](https://github.com/brucorreia/aiops-observability-demo/actions/workflows/load-generator.yaml)
 
-A reproducible Kubernetes demo where firing alerts go to an agent that scores CrashLoopBackOff, OOMKilled, and HTTP 500 logs, then applies rollback or scale automatically when the LLM recommends it. The scores are a prioritization from collected evidence, not mathematical certainty.
+A reproducible Kubernetes demo where firing alerts go to an agent that scores OOMKilled and HTTP 500 logs (CrashLoopBackOff remains available via `make`). The console Execute button applies rollback or scale; automatic remediation stays off until `AUTOMATIC_EXECUTION_ALLOWED=true`. The scores are a prioritization from collected evidence, not mathematical certainty.
 
 HTTP 500 is detected only from application stdout. There is no `demo_http_requests_total` metric and no PromQL 5xx rule.
 
@@ -14,11 +14,11 @@ More detail: [docs/architecture.md](docs/architecture.md), [docs/scoring.md](doc
 
 ## What you will run
 
-| Mode | Command | Signal |
+| Mode | Console / command | Signal |
 | --- | --- | --- |
-| `crashloop` | `make demo-crashloop` | kube-state-metrics `CrashLoopBackOff` |
-| `oom` | `make demo-oom` | kube-state-metrics `OOMKilled` + cAdvisor memory |
-| `http500` | `make demo-500` | VictoriaLogs LogsQL on stdout JSON |
+| `oom` | OOM recente / `make demo-oom` | kube-state-metrics `OOMKilled` + cAdvisor memory |
+| `http500` | HTTP 500 / `make demo-500` | VictoriaLogs LogsQL on stdout JSON |
+| `crashloop` | `make demo-crashloop` only | kube-state-metrics `CrashLoopBackOff` |
 
 `make run` deletes and recreates the k3d cluster named `aiops`, installs Argo CD and VictoriaMetrics/VictoriaLogs `0.85.0`, and lets Argo CD sync **three Applications** (`demo-app`, `ai-agent`, `load-generator`) from GitHub. Each app has its own GitHub Actions pipeline and image tag.
 
@@ -87,7 +87,7 @@ cp .env.example .env
 Useful keys in `.env.example`:
 
 - `RECENT_DEPLOYMENT_WINDOW_MINUTES=15` — what counts as a recent Deployment revision
-- `AUTOMATIC_EXECUTION_ALLOWED=true` — apply rollback/scale after a scored firing alert
+- `AUTOMATIC_EXECUTION_ALLOWED=false` — keep remediation manual (console Execute). Set `true` to auto-apply rollback/scale after a scored firing alert
 - `OPENAI_API_KEY` — required for scoring; without it the agent returns `llm_unavailable`
 - `OPENAI_MODEL` — default `gpt-4o-mini`
 - `GITHUB_TOKEN` — optional if GitHub rate-limits anonymous commit lookups
@@ -164,7 +164,7 @@ make run
 
 **monitoring.** Adds the VictoriaMetrics Helm repo and installs release `vmks` in namespace `monitoring` with `monitoring/values-common.yaml` + `monitoring/values-local.yaml` (`local-path` PVCs, 1 Gi, 1 day retention, no Grafana).
 
-**deploy.** Applies the Argo CD AppProject and the three Applications, then waits until each is Synced/Healthy. Incident commands (`make demo-crashloop` and the others) still patch `DEMO_MODE` in-cluster; Argo ignores those fields on `demo-app` so it does not revert the demo.
+**deploy.** Applies the Argo CD AppProject and the three Applications, then waits until each is Synced/Healthy. Incidents are git commits of `apps/demo-app/demo_mode`, then Argo CD rolls the new image.
 
 This is a monorepo with isolated pipelines:
 
@@ -197,35 +197,31 @@ kubectl get pvc -n monitoring
 kubectl get vmrule -n monitoring
 ```
 
-`demo-app` starts in `DEMO_MODE=good` (`/health` and `/api` return 200).
+`demo-app` starts in `DEMO_MODE=good` (`/health` and `/api` return 200). `/api` also returns `checkout_reais`, which grows R$ 7.00 per second so the console checkout card stays live.
 
 ## 9. Run the incidents
 
 Use three terminals if you want live output: commands, `make agent-logs`, `make app-logs`.
 
-Wait until pods are Ready before switching modes. After `demo-crashloop` the app will not become Ready; that is expected.
+Wait until pods are Ready before switching modes. Open `make console` (http://localhost:8082) for the operator UI: OOM recente, OOM antigo, HTTP 500, and Saudável. The AI column appears only after a cluster problem is identified. Remediation is manual unless `AUTOMATIC_EXECUTION_ALLOWED` is true.
 
 ```bash
 source .kube/env
-make agent-logs   # in another terminal: scores and automatic_execution
+make console      # operator UI; buttons commit the same GitOps incidents
+make agent-logs   # in another terminal: scores; execution stays skipped while the flag is false
 
-# 1. CrashLoopBackOff after a recorded deploy
-make demo-crashloop
-kubectl get pods -n aiops-demo -w
-
-# 2. OOM after a recent deploy (rollback should outrank vertical scale)
-make demo-good
+# 1. OOM after a recent deploy (rollback should outrank vertical scale)
 make demo-oom
 
-# 3. Same OOM, old deploy annotation (vertical scale / investigate should lead)
+# 2. Same OOM, old deploy annotation (vertical scale / investigate should lead)
 make demo-oom-stale
 
-# 4. HTTP 500 from logs; /health stays 200
+# 3. HTTP 500 from logs; /health stays 200, checkout_reais still increments
 make demo-good
 make demo-500
 ```
 
-Each `make demo-*` commits `apps/demo-app/demo_mode`, pushes `main`, and waits for GitHub Actions + Argo CD. That is the failed deploy: a real git SHA and a new image tag. The working tree must be clean. After the roll, wait 15–40 seconds for the alert; there is no `make analyze`.
+Each `make demo-*` (or console button) commits `apps/demo-app/demo_mode`, pushes `main`, and waits for GitHub Actions + Argo CD. That is the failed deploy: a real git SHA and a new image tag. The working tree must be clean. After the roll, wait 15–40 seconds for the alert; there is no `make analyze`. `make demo-crashloop` still exists for a CrashLoopBackOff talk, but it is not on the console.
 
 ## 10. Inspect telemetry
 
@@ -301,7 +297,7 @@ docs/                Architecture, scoring, talk script, incident output
 | Images `ImagePullBackOff` | Wait for the matching app workflow and for that Argo CD Application to be Synced. Make the GHCR packages public (or add a pull secret). |
 | Argo CD cannot fetch the repo | The GitHub remote must exist. A private repo needs an Argo CD repository credential |
 | `make argocd-ui` | http://localhost:8088 — user `admin`, password from `argocd-initial-admin-secret` |
-| `demo-crashloop` rollout never Ready | Expected. Watch `make agent-logs` for the firing alert and score |
+| `demo-crashloop` rollout never Ready | Expected for that make target; it is not on the console |
 | HTTP 500 alert does not fire | Confirm load-generator is running and wait 15–40 s; `/health` stays 200 on purpose |
 | Agent log shows `llm_unavailable` | Set `OPENAI_API_KEY` in `.env` and run `make llm-secret` |
 

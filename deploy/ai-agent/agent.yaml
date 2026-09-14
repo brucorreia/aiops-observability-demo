@@ -55,7 +55,7 @@ spec:
             - name: RECENT_DEPLOYMENT_WINDOW_MINUTES
               value: "15"
             - name: AUTOMATIC_EXECUTION_ALLOWED
-              value: "true"
+              value: "false"
             - name: VICTORIAMETRICS_URL
               value: http://vmsingle-vmks.monitoring.svc:8428
             - name: VICTORIALOGS_URL

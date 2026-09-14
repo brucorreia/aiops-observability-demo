@@ -1,18 +1,8 @@
-import {
-  Activity,
-  Bug,
-  Flame,
-  Maximize2,
-  Pause,
-  Play,
-  ShieldCheck,
-  ServerCrash,
-} from "lucide-react";
+import { Activity, Bug, Flame, Maximize2, Pause, Play, ShieldCheck } from "lucide-react";
 import type { ClusterStatus } from "./types";
 import { clock } from "./format";
 
 const INCIDENTS = [
-  { mode: "crashloop", label: "CrashLoop", icon: ServerCrash },
   { mode: "oom", label: "OOM recente", icon: Flame },
   { mode: "oom-stale", label: "OOM antigo", icon: Flame },
   { mode: "http500", label: "HTTP 500", icon: Bug },
@@ -39,6 +29,7 @@ type Props = {
 
 export function TopBar({ status, paused, busy, error, onTogglePause, onIncident }: Props) {
   const live = status?.connections;
+  const auto = Boolean(status?.automatic_execution_allowed);
   return (
     <header className="relative flex h-[72px] items-center gap-6 border-b border-line/80 px-6">
       <div className="flex min-w-[240px] items-center gap-3">
@@ -61,6 +52,13 @@ export function TopBar({ status, paused, busy, error, onTogglePause, onIncident 
         <span className="inline-flex items-center gap-1.5 rounded-full border border-ok/30 bg-ok/10 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-ok">
           <span className="h-1.5 w-1.5 rounded-full bg-ok" />
           Live
+        </span>
+        <span
+          className={`rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.16em] ${
+            auto ? "border-warn/40 bg-warn/10 text-warn" : "border-line text-mute"
+          }`}
+        >
+          {auto ? "Auto" : "Manual"}
         </span>
         <span className="font-mono text-[11px] text-mute">{clock(status?.updated_at)}</span>
       </div>

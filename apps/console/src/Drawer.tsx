@@ -4,10 +4,12 @@ import { relativeTime, statusTone } from "./format";
 export function Drawer({
   pod,
   detail,
+  insetClass = "right-0",
   onClose,
 }: {
   pod: Workload | null;
   detail: Record<string, unknown> | null;
+  insetClass?: string;
   onClose: () => void;
 }) {
   if (!pod) return null;
@@ -16,7 +18,7 @@ export function Drawer({
   const requests = (detail?.requests as Record<string, string>) || {};
   const limits = (detail?.limits as Record<string, string>) || {};
   return (
-    <div className="absolute inset-y-0 right-[380px] z-30 w-[340px] border-l border-line bg-navy/95 p-4 shadow-panel">
+    <div className={`absolute inset-y-0 z-30 w-[340px] border-l border-line bg-navy/95 p-4 shadow-panel ${insetClass}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="font-mono text-sm">{pod.name}</div>

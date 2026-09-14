@@ -18,6 +18,19 @@ import { Topology } from "./Topology";
 import { Workloads } from "./Workloads";
 import type { AnalysisView, ClusterStatus, EventLine, LogLine, Workload } from "./types";
 
+function clusterProblemIdentified(status: ClusterStatus | null, analysis: AnalysisView | null): boolean {
+  if (!status || !analysis?.id) return false;
+  const crashing = (status.workloads || []).some(
+    (item) =>
+      item.status === "CrashLoopBackOff" ||
+      item.status === "OOMKilled" ||
+      item.reason === "OOMKilled",
+  );
+  const httpFailing = status.demo_app?.api?.status === 500;
+  const demoDown = status.demo_app != null && status.demo_app.ready === 0;
+  return status.health === "Degraded" || crashing || httpFailing || demoDown;
+}
+
 export default function App() {
   const [status, setStatus] = useState<ClusterStatus | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisView | null>(null);
@@ -99,6 +112,8 @@ export default function App() {
     }
   }
 
+  const showAi = clusterProblemIdentified(status, analysis);
+
   return (
     <div className="relative flex h-screen flex-col overflow-hidden">
       <TopBar
@@ -121,16 +136,24 @@ export default function App() {
           <Workloads items={status?.workloads || []} onSelect={setSelected} />
           <Logs demo={demoLogs} agent={agentLogs} />
         </main>
-        <IncidentPanel
-          analysis={analysis}
-          timeline={status?.timeline || []}
-          events={events}
-          busy={Boolean(busy)}
-          error={actionError}
-          onExecute={onExecute}
-        />
+        {showAi ? (
+          <IncidentPanel
+            analysis={analysis}
+            timeline={status?.timeline || []}
+            events={events}
+            busy={Boolean(busy)}
+            error={actionError}
+            automaticExecution={Boolean(status?.automatic_execution_allowed)}
+            onExecute={onExecute}
+          />
+        ) : null}
       </div>
-      <Drawer pod={selected} detail={detail} onClose={() => setSelected(null)} />
+      <Drawer
+        pod={selected}
+        detail={detail}
+        insetClass={showAi ? "right-[380px]" : "right-0"}
+        onClose={() => setSelected(null)}
+      />
     </div>
   );
 }

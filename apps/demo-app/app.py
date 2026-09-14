@@ -1,6 +1,5 @@
 import json
 import os
-import sys
 import threading
 import time
 from datetime import datetime, timezone
@@ -22,6 +21,9 @@ MODE = load_mode()
 PORT = int(os.getenv("PORT", "8080"))
 SERVICE = os.getenv("SERVICE_NAME", "demo-app")
 HELD: list[bytearray] = []
+STARTED_AT = time.monotonic()
+CHECKOUT_BASE = 128.90
+CHECKOUT_RATE = 7.0
 
 
 def utc_now() -> str:
@@ -51,6 +53,10 @@ def exhaust_memory() -> None:
         HELD.append(block)
 
 
+def checkout_reais() -> float:
+    return round(CHECKOUT_BASE + max(0.0, time.monotonic() - STARTED_AT) * CHECKOUT_RATE, 2)
+
+
 class Handler(BaseHTTPRequestHandler):
     def send_json(self, status: int, body: str) -> None:
         payload = body.encode()
@@ -78,7 +84,17 @@ class Handler(BaseHTTPRequestHandler):
                 "message": "internal error serving /api" if status == 500 else "request completed",
             }
             log_event(**event)
-            self.send_json(status, json.dumps({"status": status, "version": MODE}))
+            self.send_json(
+                status,
+                json.dumps(
+                    {
+                        "status": status,
+                        "version": MODE,
+                        "checkout_reais": checkout_reais(),
+                        "currency": "BRL",
+                    }
+                ),
+            )
             return
 
         self.send_json(404, '{"status":404}')
@@ -90,5 +106,6 @@ class Handler(BaseHTTPRequestHandler):
 if MODE == "oom":
     threading.Thread(target=exhaust_memory, daemon=True).start()
 
-log_event(level="info", event="started", port=PORT, message="demo-app listening")
-ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+if __name__ == "__main__":
+    log_event(level="info", event="started", port=PORT, message="demo-app listening")
+    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

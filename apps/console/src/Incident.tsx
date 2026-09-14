@@ -21,6 +21,7 @@ export function IncidentPanel({
   events,
   busy,
   error,
+  automaticExecution = false,
   onExecute,
 }: {
   analysis: AnalysisView | null;
@@ -28,6 +29,7 @@ export function IncidentPanel({
   events: EventLine[];
   busy: boolean;
   error?: string | null;
+  automaticExecution?: boolean;
   onExecute: () => void;
 }) {
   const [evidence, setEvidence] = useState(false);
@@ -38,9 +40,12 @@ export function IncidentPanel({
     <aside className="flex min-h-0 w-[380px] shrink-0 flex-col border-l border-line bg-panel/80">
       <div className="border-b border-line px-4 py-3">
         <div className="text-[11px] uppercase tracking-[0.16em] text-mute">AI Incident Analysis</div>
-        <div className="mt-1 text-lg">{analysis?.incident_label || "Aguardando alerta"}</div>
+        <div className="mt-1 text-lg">{analysis?.incident_label || "Incidente identificado"}</div>
         <div className="mt-1 text-[12px] text-mute">
-          {analysis?.summary || "O Alertmanager dispara sozinho após o roll GitOps."}
+          {analysis?.summary || "O Alertmanager disparou após o roll GitOps."}
+        </div>
+        <div className="mt-2 text-[11px] uppercase tracking-[0.14em] text-mute">
+          {automaticExecution ? "Execução automática ligada" : "Decisão manual"}
         </div>
       </div>
       <div className="min-h-0 flex-1 space-y-4 overflow-auto px-4 py-4">

@@ -1,5 +1,6 @@
 recent_deployment_window_minutes: 15
-automatic_execution_allowed: true
+# Leave false for human-in-the-loop (console Execute). Set true to auto-remediate.
+automatic_execution_allowed: false
 llm:
   timeout_seconds: 45
 

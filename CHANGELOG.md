@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Demo incidents are git commits of `apps/demo-app/demo_mode` followed by a real GitOps image roll
 - Operator console at `make console` (http://localhost:8082): live demo-app, GitOps incident buttons, scores, and execute
 - CrashLoopBackOff exits the process with no app log; OOMKilled fills RSS against a 32Mi cgroup limit; HTTP 500 remains a stdout signal
+- `demo-app` `/api` returns a checkout amount that grows R$ 7.00 per second
+- Console incident buttons are OOM and HTTP 500; the AI panel appears only after a cluster problem is identified
+- Remediation stays manual (`AUTOMATIC_EXECUTION_ALLOWED=false`) until that flag is flipped
 
 ## [0.1.2] - 2026-09-14
 
