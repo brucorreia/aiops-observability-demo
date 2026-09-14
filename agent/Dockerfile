@@ -1,7 +1,8 @@
-FROM node:22-alpine AS console
+FROM --platform=$BUILDPLATFORM node:22-alpine AS console
 WORKDIR /src
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 COPY apps/console/package.json apps/console/package-lock.json ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund
 COPY apps/console/ ./
 RUN npm run build
 
