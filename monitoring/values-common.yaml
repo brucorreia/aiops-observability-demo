@@ -1,0 +1,236 @@
+nameOverride: vmks
+
+victoria-metrics-operator:
+  enabled: true
+  crds:
+    plain: true
+  serviceMonitor:
+    enabled: false
+
+grafana:
+  enabled: false
+defaultDashboards:
+  enabled: false
+defaultRules:
+  enabled: false
+syncJob:
+  enabled: false
+prometheus-node-exporter:
+  enabled: false
+kubeApiServer:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeEtcd:
+  enabled: false
+coreDns:
+  enabled: false
+kubeDns:
+  enabled: false
+
+vmsingle:
+  enabled: true
+  spec:
+    retentionPeriod: "1d"
+    replicaCount: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 256Mi
+      limits:
+        memory: 512Mi
+    storage:
+      accessModes: [ReadWriteOnce]
+      resources:
+        requests:
+          storage: 1Gi
+
+vmcluster:
+  enabled: false
+vmdistributed:
+  enabled: false
+
+vmagent:
+  enabled: true
+  rbac:
+    namespaced: false
+  spec:
+    selectAllByDefault: true
+    scrapeInterval: 15s
+    resources:
+      requests:
+        cpu: 25m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+    extraArgs:
+      promscrape.streamParse: "true"
+
+kube-state-metrics:
+  enabled: true
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+kubelet:
+  enabled: true
+  vmScrapes:
+    cadvisor:
+      enabled: true
+      spec:
+        path: /metrics/cadvisor
+    probes:
+      enabled: false
+    resources:
+      enabled: false
+
+vlsingle:
+  enabled: true
+  spec:
+    retentionPeriod: "1d"
+    replicaCount: 1
+    resources:
+      requests:
+        cpu: 25m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+    storage:
+      accessModes: [ReadWriteOnce]
+      resources:
+        requests:
+          storage: 1Gi
+
+vlcluster:
+  enabled: false
+vldistributed:
+  enabled: false
+
+vlagent:
+  enabled: true
+  spec:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        memory: 128Mi
+    k8sCollector:
+      enabled: true
+      excludeFilter: 'NOT kubernetes.pod_namespace:="aiops-demo"'
+      includePodLabels: false
+      includePodAnnotations: false
+      includeNodeLabels: false
+      includeNodeAnnotations: false
+    remoteWriteSettings:
+      maxDiskUsagePerURL: 100MiB
+
+vmalert:
+  enabled: true
+  spec:
+    selectAllByDefault: true
+    evaluationInterval: 10s
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        memory: 128Mi
+
+alertmanager:
+  enabled: true
+  monzoTemplate:
+    enabled: false
+  spec:
+    replicaCount: 1
+    selectAllByDefault: true
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        memory: 128Mi
+  config:
+    route:
+      receiver: ai-agent-webhook
+      group_by: [alertname, namespace, pod]
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 15m
+    receivers:
+      - name: ai-agent-webhook
+        webhook_configs:
+          - url: http://ai-agent.monitoring.svc.cluster.local:8080/alerts
+            send_resolved: true
+
+extraRules:
+  aiops-demo-metrics:
+    groups:
+      - name: aiops-demo-metrics
+        interval: 10s
+        rules:
+          - alert: ContainerCrashLoopBackOff
+            expr: |
+              kube_pod_container_status_waiting_reason{
+                namespace="aiops-demo",
+                reason="CrashLoopBackOff"
+              } == 1
+            for: 30s
+            labels:
+              severity: critical
+              incident_type: crashloop
+              signal: kubernetes
+            annotations:
+              summary: Container restarting in CrashLoopBackOff
+          - alert: ContainerOOMKilled
+            expr: |
+              kube_pod_container_status_last_terminated_reason{
+                namespace="aiops-demo",
+                reason="OOMKilled"
+              } == 1
+            for: 30s
+            labels:
+              severity: critical
+              incident_type: oom
+              signal: kubernetes
+            annotations:
+              summary: Container last terminated with OOMKilled
+          - alert: ContainerMemoryUsageHigh
+            expr: |
+              sum by (namespace, pod, container) (
+                container_memory_working_set_bytes{namespace="aiops-demo",container!="",container!="POD"}
+              )
+              /
+              max by (namespace, pod, container) (
+                kube_pod_container_resource_limits{namespace="aiops-demo",resource="memory"}
+              ) > 0.90
+            for: 30s
+            labels:
+              severity: critical
+              incident_type: oom
+              signal: kubernetes
+            annotations:
+              summary: Container using more than 90% of its memory limit
+  aiops-demo-logs:
+    groups:
+      - name: aiops-demo-logs
+        type: vlogs
+        interval: 10s
+        rules:
+          - alert: HighHttp5xxFromLogs
+            expr: 'kubernetes.pod_namespace:="aiops-demo" kubernetes.container_name:="demo-app" | unpack_json | path:="/api" status:500 | stats count() as http_500 | filter http_500:>=5'
+            for: 30s
+            labels:
+              severity: critical
+              incident_type: http500
+              signal: logs
+              namespace: aiops-demo
+            annotations:
+              summary: Application stdout shows HTTP 500 on /api

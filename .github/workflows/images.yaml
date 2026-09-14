@@ -1,0 +1,65 @@
+name: images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/demo-app/**"
+      - "agent/**"
+      - "config/scoring.yaml"
+      - ".github/workflows/images.yaml"
+      - ".github/workflows/reusable-container-build.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - image_name: aiops-demo-app
+            context: apps/demo-app
+            file: apps/demo-app/Dockerfile
+          - image_name: aiops-agent
+            context: .
+            file: agent/Dockerfile
+    uses: ./.github/workflows/reusable-container-build.yaml
+    with:
+      image_name: ${{ matrix.image_name }}
+      context: ${{ matrix.context }}
+      file: ${{ matrix.file }}
+
+  gitops:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set Argo image tags
+        env:
+          IMAGE_OWNER: ${{ github.repository_owner }}
+        run: |
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          IMAGE_OWNER="${IMAGE_OWNER}" IMAGE_TAG="${SHORT_SHA}" ./scripts/set-image-tag.sh
+
+      - name: Commit Argo manifests
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add infra/apps/kustomization.yaml
+          if git diff --cached --quiet; then
+            echo "Argo image tags already match"
+            exit 0
+          fi
+          git commit -m "chore: set Argo image tags to ${GITHUB_SHA:0:7}"
+          git push

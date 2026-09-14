@@ -1,0 +1,13 @@
+.env
+.kube/
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+venv/
+docs/incidents/*.json
+docs/incidents/*.md
+!docs/incidents/.gitkeep

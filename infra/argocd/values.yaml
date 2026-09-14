@@ -1,0 +1,11 @@
+# Local Argo CD. Workloads are synced from GitHub (infra/apps).
+dex:
+  enabled: false
+notifications:
+  enabled: false
+configs:
+  params:
+    server.insecure: true
+  cm:
+    timeout.reconciliation: 15s
+    timeout.reconciliation.jitter: 5s

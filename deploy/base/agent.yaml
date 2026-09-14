@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ai-agent
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ai-agent
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ai-agent
+subjects:
+  - kind: ServiceAccount
+    name: ai-agent
+    namespace: monitoring
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ai-agent
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-agent
+  namespace: monitoring
+  labels:
+    app: ai-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-agent
+  template:
+    metadata:
+      labels:
+        app: ai-agent
+    spec:
+      serviceAccountName: ai-agent
+      containers:
+        - name: webhook
+          image: aiops-agent:dev
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: RECENT_DEPLOYMENT_WINDOW_MINUTES
+              value: "15"
+            - name: AUTOMATIC_EXECUTION_ALLOWED
+              value: "false"
+            - name: VICTORIAMETRICS_URL
+              value: http://vmsingle-vmks.monitoring.svc:8428
+            - name: VICTORIALOGS_URL
+              value: http://vlsingle-vmks.monitoring.svc:9428
+            - name: KUBERNETES_NAMESPACE
+              value: aiops-demo
+            - name: SCORING_CONFIG
+              value: /app/config/scoring.yaml
+            - name: OPENAI_API_KEY
+              value: ""
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: scoring
+              mountPath: /app/config
+              readOnly: true
+      volumes:
+        - name: scoring
+          configMap:
+            name: ai-agent-scoring
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-agent
+  namespace: monitoring
+spec:
+  selector:
+    app: ai-agent
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

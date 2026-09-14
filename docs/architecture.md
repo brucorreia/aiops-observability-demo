@@ -1,0 +1,67 @@
+# Architecture
+
+The demo is a small Kubernetes AIOps loop: three synthetic incidents, one telemetry path, and an agent that scores remediation options instead of binding each alert to a fixed action.
+
+```text
+CrashLoopBackOff / OOMKilled / resource pressure
+    → kube-state-metrics + cAdvisor
+    → VMAgent
+    → VictoriaMetrics
+    → VMAlert
+
+HTTP 500 and exceptions
+    → stdout JSON
+    → VLAgent (aiops-demo only)
+    → VictoriaLogs
+    → VMAlert with LogsQL (group type: vlogs)
+
+VMAlert
+    → Alertmanager
+    → ai-agent
+    → collect context
+    → score alternatives
+    → recommend
+    → human approval
+    → rollback or scale
+```
+
+## Workloads
+
+- `apps/demo-app` exposes `/health` and `/api`. `DEMO_MODE` selects `good`, `crashloop`, `oom`, or `http500`. There is no custom HTTP Prometheus metric.
+- `load-generator` calls `/api` once per second so log-based HTTP 500 alerts have volume.
+- `agent` receives Alertmanager webhooks, enriches from Kubernetes, VictoriaMetrics, and VictoriaLogs, then writes a recommendation.
+
+## Deploy identity
+
+A new pod is not treated as a deploy. Pipelines and `scripts/set-demo-mode.sh` write:
+
+- `aiops.demo/git-sha`
+- `aiops.demo/deployed-at`
+- `aiops.demo/image`
+- `kubernetes.io/change-cause`
+
+The agent also reads ReplicaSet `deployment.kubernetes.io/revision`, current and previous images, and `DEMO_MODE` on those revisions.
+
+## GitOps
+
+GitHub Actions builds the images, pushes them to GHCR, and commits the new tags into `infra/apps/kustomization.yaml`. Argo CD watches that GitHub path and auto-syncs the application `aiops`. `DEMO_MODE` patches from the demo scripts are ignored so a talk incident is not reverted.
+
+Local and GHCR images carry OCI labels:
+
+- `org.opencontainers.image.source`
+- `org.opencontainers.image.revision`
+- `org.opencontainers.image.created`
+- `org.opencontainers.image.version`
+
+## Agent pipeline
+
+1. **Receive** Alertmanager JSON and normalize `incident_type`.
+2. **Enrich** Deployment, ReplicaSets, pods, events, metrics, and logs. Missing data is marked `status: unavailable`.
+3. **Hypothesize** regression, leak, low limit, load, dependency, config, or infrastructure.
+4. **Score** with deterministic weights from `config/scoring.yaml`, then an optional LLM adjustment capped by `llm.max_adjustment`.
+5. **Recommend** actions whose `recommendation_score` values sum to 100.
+6. **Execute** only after a human decision. `automatic_execution_allowed` is always `false` in this version.
+
+## Storage
+
+VictoriaMetrics and VictoriaLogs run as single-node CRs from `victoria-metrics-k8s-stack` `0.85.0`: 1 day retention, `1Gi` PVCs, `local-path` on k3d, `longhorn` on the homelab, no Grafana.

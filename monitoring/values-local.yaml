@@ -1,0 +1,10 @@
+vmsingle:
+  spec:
+    storage:
+      storageClassName: local-path
+
+vlsingle:
+  spec:
+    storage:
+      storageClassName: local-path
+

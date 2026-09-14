@@ -1,0 +1,10 @@
+vmsingle:
+  spec:
+    storage:
+      storageClassName: longhorn
+
+vlsingle:
+  spec:
+    storage:
+      storageClassName: longhorn
+

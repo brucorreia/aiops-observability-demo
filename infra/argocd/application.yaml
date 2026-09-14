@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aiops
+  namespace: argocd
+spec:
+  project: aiops
+  source:
+    repoURL: https://github.com/brucorreia/aiops-observability-demo.git
+    targetRevision: HEAD
+    path: infra/apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: aiops-demo
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: demo-app
+      jsonPointers:
+        - /spec/template/spec/containers/0/env
+        - /metadata/annotations
+        - /spec/template/metadata/annotations
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true

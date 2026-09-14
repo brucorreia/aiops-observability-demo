@@ -1,0 +1,71 @@
+recent_deployment_window_minutes: 15
+automatic_execution_allowed: false
+llm:
+  max_adjustment: 10
+
+# Deterministic weights applied to recommendation_score before normalization.
+# Negative values are allowed here and clipped to 0 after aggregation.
+scoring:
+  recent_deployment:
+    rollback: 40
+  previous_revision_healthy:
+    rollback: 25
+  failures_started_after_deployment:
+    rollback: 25
+
+  no_recent_deployment:
+    rollback: -30
+    investigate: 15
+    vertical_scale: 10
+
+  memory_limit_reached:
+    vertical_scale: 20
+
+  sustained_memory_growth:
+    rollback: 20
+    vertical_scale: 10
+    horizontal_scale: -20
+
+  traffic_growth:
+    horizontal_scale: 25
+
+  multiple_replicas_affected:
+    rollback: 15
+
+  external_dependency_errors:
+    investigate: 30
+    rollback: -10
+
+  crashloop_after_deployment:
+    rollback: 50
+
+  crashloop_without_recent_deployment:
+    investigate: 40
+    rollback: -20
+    none: 10
+
+  http_500_after_deployment:
+    rollback: 40
+
+  http_500_without_recent_deployment:
+    investigate: 35
+    rollback: -20
+
+  oom_without_recent_deployment:
+    vertical_scale: 40
+    investigate: 20
+    rollback: -25
+
+  pods_ready_with_http_500:
+    rollback: 15
+    vertical_scale: -10
+
+  cpu_saturation_with_traffic:
+    horizontal_scale: 30
+
+  single_process_memory_failure:
+    horizontal_scale: -25
+
+  weak_evidence:
+    none: 20
+    investigate: 15
