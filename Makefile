@@ -65,7 +65,7 @@ setup: ## Install CLI tools and verify they are on PATH
 
 bootstrap: setup
 
-run: doctor ## Bring the k3d stack up using the Docker daemon already running
+run: doctor ## Recreate the k3d stack; Argo CD syncs images from GitHub
 	$(MAKE) setup-local
 	@$(MAKE) --no-print-directory kube-env
 	@echo
@@ -88,7 +88,8 @@ kube-env: ## Write .kube/env so this terminal can source KUBECONFIG
 	@mkdir -p "$(dir $(KUBECONFIG_FILE))"
 	@printf 'export KUBECONFIG=%q\n' "$(KUBECONFIG_FILE)" > "$(KUBE_ENV_FILE)"
 
-cluster: doctor ## Create the k3d cluster with an isolated kubeconfig
+cluster: doctor ## Recreate the k3d cluster with an isolated kubeconfig
+	-k3d cluster delete $(CLUSTER)
 	mkdir -p "$(dir $(KUBECONFIG_FILE))"
 	k3d cluster create --config cluster/k3d.yaml
 	k3d kubeconfig get $(CLUSTER) > "$(KUBECONFIG_FILE)"
@@ -111,20 +112,6 @@ argocd-ui: ## Port-forward the Argo CD UI to localhost:8088
 	kubectl port-forward -n $(ARGO_NS) svc/$(ARGO_RELEASE)-server 8088:80
 
 build: ## Optional: build images locally and import them into k3d
-	@test -n "$(IMAGE_OWNER)" || { echo "Could not derive GitHub owner from origin. Set IMAGE_OWNER."; exit 1; }
-	docker build \
-	  --build-arg GIT_SHA=$(GIT_SHA) \
-	  --build-arg SOURCE_URL=$(SOURCE_URL) \
-	  --build-arg BUILD_DATE=$(BUILD_DATE) \
-	  --build-arg VERSION=$(GIT_SHA) \
-	  -t $(APP_IMAGE) apps/demo-app
-	docker build \
-	  --build-arg GIT_SHA=$(GIT_SHA) \
-	  --build-arg SOURCE_URL=$(SOURCE_URL) \
-	  --build-arg BUILD_DATE=$(BUILD_DATE) \
-	  --build-arg VERSION=$(GIT_SHA) \
-	  -f agent/Dockerfile -t $(AGENT_IMAGE) .
-	k3d image import -c $(CLUSTER) $(APP_IMAGE) $(AGENT_IMAGE)
 	@test -n "$(IMAGE_OWNER)" || { echo "Could not derive GitHub owner from origin. Set IMAGE_OWNER."; exit 1; }
 	docker build \
 	  --build-arg GIT_SHA=$(GIT_SHA) \

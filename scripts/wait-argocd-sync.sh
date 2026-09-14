@@ -3,7 +3,7 @@ set -euo pipefail
 
 NS="${ARGO_NS:-argocd}"
 APP="${ARGO_APP:-aiops}"
-TIMEOUT="${ARGO_WAIT_SECONDS:-180}"
+TIMEOUT="${ARGO_WAIT_SECONDS:-600}"
 
 kubectl annotate application "${APP}" -n "${NS}" argocd.argoproj.io/refresh=hard --overwrite >/dev/null
 

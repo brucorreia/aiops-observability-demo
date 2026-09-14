@@ -18,7 +18,7 @@ More detail: [docs/architecture.md](docs/architecture.md), [docs/scoring.md](doc
 | `oom` | `make demo-oom` | kube-state-metrics `OOMKilled` + cAdvisor memory |
 | `http500` | `make demo-500` | VictoriaLogs LogsQL on stdout JSON |
 
-`make run` creates a disposable k3d cluster named `aiops`, installs Argo CD and VictoriaMetrics/VictoriaLogs `0.85.0`, and lets Argo CD sync the app, agent, and load generator from GitHub (`infra/apps`). Image tags are written by GitHub Actions after they publish to GHCR.
+`make run` deletes and recreates the k3d cluster named `aiops`, installs Argo CD and VictoriaMetrics/VictoriaLogs `0.85.0`, and lets Argo CD sync the app, agent, and load generator from GitHub (`infra/apps`). Image tags are written by GitHub Actions after they publish to GHCR.
 
 Quick start after cloning:
 
@@ -129,7 +129,7 @@ make test
 `make setup-local` is the Kubernetes half of `make run` and is equivalent to:
 
 ```bash
-make cluster       # k3d cluster aiops + isolated kubeconfig
+make cluster       # delete+create k3d cluster aiops + isolated kubeconfig
 make argocd        # Helm argo-cd 10.9.0
 make monitoring    # Helm victoria-metrics-k8s-stack 0.85.0
 make deploy        # Argo CD Application pointing at this GitHub repo
@@ -146,9 +146,9 @@ make run
 
 ### What each step does
 
-**cluster.** Creates 1 server + 1 agent from `cluster/k3d.yaml`, publishes `localhost:8080` → the k3d load balancer, and writes `.kube/config` with a single context `k3d-aiops`.
+**cluster.** Deletes any existing k3d cluster named `aiops`, creates 1 server + 1 agent from `cluster/k3d.yaml`, publishes `localhost:8080` → the k3d load balancer, and writes `.kube/config` with a single context `k3d-aiops`. Every `make run` starts this cluster from scratch so Argo CD cannot keep a stale local Application.
 
-**argocd.** Installs Argo CD in namespace `argocd`. The application `aiops` auto-syncs `infra/apps` from GitHub. `make argocd-ui` port-forwards http://localhost:8088 (user `admin`).
+**argocd.** Installs Argo CD in namespace `argocd`. The application `aiops` auto-syncs `infra/apps` from `https://github.com/brucorreia/aiops-observability-demo.git`. `make argocd-ui` port-forwards http://localhost:8088 (user `admin`).
 
 **monitoring.** Adds the VictoriaMetrics Helm repo and installs release `vmks` in namespace `monitoring` with `monitoring/values-common.yaml` + `monitoring/values-local.yaml` (`local-path` PVCs, 1 Gi, 1 day retention, no Grafana).
 
