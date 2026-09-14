@@ -11,8 +11,7 @@ from scoring.engine import clip_and_normalize
 
 PROMPT = """You are the only scorer in this AIOps loop. There is no deterministic score to adjust.
 You receive collected evidence plus optional playbook_hints (SRE notes, not answers).
-Read application logs and recent git commits, then assign recommendation_score values
-that sum to 100 for these actions:
+Assign recommendation_score values that sum to 100 for these actions:
 - rollback: revert the current Deployment revision
 - vertical_scale: raise memory/CPU limits
 - horizontal_scale: add replicas
@@ -24,11 +23,13 @@ Rules:
 - Do not invent metrics, deploys, logs, commits, files, revisions, or termination reasons.
 - If evidence is marked unavailable, treat it as unknown. Do not assume it exists.
 - A new pod is not a deploy. Use recorded Deployment revision, image tag, git SHA, and commit compare.
+- CrashLoopBackOff and OOMKilled are cluster facts (waiting/terminated reason, restart count, kube events, memory limit vs working set). Do not expect application logs for those incidents.
+- HTTP 500 is a log signal: pods can stay Ready while /api stdout shows status 500.
 - Prefer rollback when failures started after a commit/rollout that changed the failing app (especially apps/demo-app).
 - Prefer vertical_scale for OOM without a recent app change, or when memory hits the limit without a leak-vs-traffic story that needs more replicas.
 - Prefer horizontal_scale only when traffic/CPU evidence supports load, not a single-process leak or crash.
 - Prefer investigate when logs point to upstream/timeout/DNS, when commits do not touch the failing app, or when evidence is weak.
-- Cite specific log events/messages and commit SHAs/files in reasons.
+- Cite Kubernetes reasons/events/restarts for crashloop and oom. Cite log lines for HTTP 500. Cite commit SHAs/files when a deploy is involved.
 - Write summary and reasons in Portuguese.
 
 Return JSON only:
@@ -43,7 +44,7 @@ Return JSON only:
     "none": ["..."]
   }},
   "cited_commits": ["abc1234"],
-  "cited_logs": ["startup_failed"],
+  "cited_logs": ["optional log snippet for HTTP 500 only"],
   "notes": []
 }}
 """

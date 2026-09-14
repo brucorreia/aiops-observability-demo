@@ -7,6 +7,9 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+PAGE = 4096
+CHUNK = 8 * 1024 * 1024
+
 
 def load_mode() -> str:
     path = Path(__file__).with_name("demo_mode")
@@ -18,8 +21,7 @@ def load_mode() -> str:
 MODE = load_mode()
 PORT = int(os.getenv("PORT", "8080"))
 SERVICE = os.getenv("SERVICE_NAME", "demo-app")
-CHUNKS: list[bytearray] = []
-ALLOCATED_BYTES = 0
+HELD: list[bytearray] = []
 
 
 def utc_now() -> str:
@@ -38,22 +40,15 @@ def log_event(**fields) -> None:
 
 
 if MODE == "crashloop":
-    log_event(level="error", event="startup_failed", message="simulated crash during startup")
-    sys.exit(1)
+    os._exit(1)
 
 
-def grow_memory() -> None:
-    global ALLOCATED_BYTES
+def exhaust_memory() -> None:
     while True:
-        CHUNKS.append(bytearray(2 * 1024 * 1024))
-        ALLOCATED_BYTES += 2 * 1024 * 1024
-        log_event(
-            level="info",
-            event="memory_allocated",
-            allocated_bytes=ALLOCATED_BYTES,
-            message="progressive memory allocation for OOM demo",
-        )
-        time.sleep(0.3)
+        block = bytearray(CHUNK)
+        for offset in range(0, CHUNK, PAGE):
+            block[offset] = 1
+        HELD.append(block)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -80,7 +75,7 @@ class Handler(BaseHTTPRequestHandler):
                 "path": "/api",
                 "status": status,
                 "duration_ms": duration_ms if duration_ms > 1 else 12,
-                "message": "simulated upstream failure" if status == 500 else "request completed",
+                "message": "internal error serving /api" if status == 500 else "request completed",
             }
             log_event(**event)
             self.send_json(status, json.dumps({"status": status, "version": MODE}))
@@ -93,7 +88,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if MODE == "oom":
-    threading.Thread(target=grow_memory, daemon=True).start()
+    threading.Thread(target=exhaust_memory, daemon=True).start()
 
 log_event(level="info", event="started", port=PORT, message="demo-app listening")
 ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

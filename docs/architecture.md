@@ -26,7 +26,7 @@ VMAlert
 
 ## Workloads
 
-- `apps/demo-app` exposes `/health` and `/api`. `DEMO_MODE` selects `good`, `crashloop`, `oom`, or `http500`. There is no custom HTTP Prometheus metric.
+- `apps/demo-app` mode comes from `apps/demo-app/demo_mode` baked into the image. `crashloop` exits immediately (CrashLoopBackOff). `oom` fills RSS until the 32Mi cgroup limit (OOMKilled). `http500` keeps the pod Ready and writes HTTP 500 on `/api` stdout. There is no custom HTTP Prometheus metric.
 - `load-generator` calls `/api` once per second so log-based HTTP 500 alerts have volume.
 - `agent` receives Alertmanager webhooks after a GitOps roll of `demo-app`. Demo incidents are git commits (`apps/demo-app/demo_mode`) plus an Argo CD image sync, not in-cluster `kubectl patch`.
 - `agent` receives Alertmanager webhooks, enriches from Kubernetes, VictoriaMetrics, VictoriaLogs, and GitHub commits, then scores **only with the LLM**. Without an API key it records `llm_unavailable` and does not recommend rollback or scale.

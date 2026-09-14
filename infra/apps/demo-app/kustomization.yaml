@@ -14,3 +14,8 @@ patches:
       - op: replace
         path: /spec/template/spec/containers/0/imagePullPolicy
         value: Always
+      - op: replace
+        path: /spec/template/spec/containers/0/env
+        value:
+          - name: SERVICE_NAME
+            value: demo-app
