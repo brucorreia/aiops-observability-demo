@@ -21,6 +21,7 @@ def log_event(**fields) -> None:
     payload = {
         "timestamp": utc_now(),
         "service": SERVICE,
+        "logger": "demo-app",
         "version": MODE,
         **fields,
     }
