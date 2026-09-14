@@ -9,13 +9,10 @@ from pathlib import Path
 
 
 def load_mode() -> str:
-    env = (os.getenv("DEMO_MODE") or "").strip()
-    if env:
-        return env
     path = Path(__file__).with_name("demo_mode")
     if path.exists():
         return path.read_text(encoding="utf-8").strip() or "good"
-    return "good"
+    return (os.getenv("DEMO_MODE") or "").strip() or "good"
 
 
 MODE = load_mode()
