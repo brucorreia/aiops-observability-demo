@@ -18,17 +18,15 @@ import { Topology } from "./Topology";
 import { Workloads } from "./Workloads";
 import type { AnalysisView, ClusterStatus, EventLine, LogLine, Workload } from "./types";
 
-function clusterProblemIdentified(status: ClusterStatus | null, analysis: AnalysisView | null): boolean {
-  if (!status || !analysis?.id) return false;
-  const crashing = (status.workloads || []).some(
-    (item) =>
-      item.status === "CrashLoopBackOff" ||
-      item.status === "OOMKilled" ||
-      item.reason === "OOMKilled",
+function isProblematic(item: Workload | null): boolean {
+  if (!item) return false;
+  return (
+    !item.ready ||
+    item.status === "CrashLoopBackOff" ||
+    item.status === "OOMKilled" ||
+    item.reason === "OOMKilled" ||
+    item.reason === "Error"
   );
-  const httpFailing = status.demo_app?.api?.status === 500;
-  const demoDown = status.demo_app != null && status.demo_app.ready === 0;
-  return status.health === "Degraded" || crashing || httpFailing || demoDown;
 }
 
 export default function App() {
@@ -83,9 +81,16 @@ export default function App() {
       .catch(() => setDetail(null));
   }, [selected]);
 
+  function selectWorkload(item: Workload) {
+    setSelected((current) =>
+      current?.namespace === item.namespace && current?.name === item.name ? null : item,
+    );
+  }
+
   async function onIncident(mode: string) {
     setBusy(mode === "good" ? "Restaurando a demo-app…" : "Disparando CrashLoop via GitOps…");
     setError(null);
+    setSelected(null);
     try {
       await startIncident(mode);
       setAppKey((value) => value + 1);
@@ -112,7 +117,7 @@ export default function App() {
     }
   }
 
-  const showAi = clusterProblemIdentified(status, analysis);
+  const showAi = isProblematic(selected);
 
   return (
     <div className="relative flex h-screen flex-col overflow-hidden">
@@ -127,33 +132,33 @@ export default function App() {
       {status ? <Metrics status={status} /> : <div className="px-6 py-4 text-sm text-mute">Lendo o cluster…</div>}
       <div className="flex min-h-0 flex-1">
         <main className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1.1fr)_minmax(0,0.95fr)] grid-rows-[minmax(0,1.05fr)_minmax(0,0.95fr)] gap-3 p-4 pr-3">
-          <LiveApp reloadKey={appKey} />
+          <LiveApp reloadKey={appKey} fallbackCheckout={status?.demo_app?.api?.checkout_reais} />
           <Topology
             nodes={status?.topology.nodes || []}
             unscheduled={status?.topology.unscheduled || []}
-            onSelect={setSelected}
+            selected={selected}
+            onSelect={selectWorkload}
           />
-          <Workloads items={status?.workloads || []} onSelect={setSelected} />
+          <Workloads items={status?.workloads || []} selected={selected} onSelect={selectWorkload} />
           <Logs demo={demoLogs} agent={agentLogs} />
         </main>
         {showAi ? (
           <IncidentPanel
             analysis={analysis}
+            workload={selected}
             timeline={status?.timeline || []}
             events={events}
             busy={Boolean(busy)}
             error={actionError}
             automaticExecution={Boolean(status?.automatic_execution_allowed)}
             onExecute={onExecute}
+            onClose={() => setSelected(null)}
           />
         ) : null}
       </div>
-      <Drawer
-        pod={selected}
-        detail={detail}
-        insetClass={showAi ? "right-[380px]" : "right-0"}
-        onClose={() => setSelected(null)}
-      />
+      {!showAi ? (
+        <Drawer pod={selected} detail={detail} insetClass="right-0" onClose={() => setSelected(null)} />
+      ) : null}
     </div>
   );
 }

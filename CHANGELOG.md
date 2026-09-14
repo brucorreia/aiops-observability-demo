@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CrashLoopBackOff exits the process with no app log; OOMKilled fills RSS against a 32Mi cgroup limit; HTTP 500 remains a stdout signal
 - `demo-app` `/api` returns a checkout amount that grows R$ 7.00 per second
 - Console CrashLoop button hides the cause (OOM or startup Error); the LLM classifies from Kubernetes evidence and scores the action
+- The AI column opens only after clicking a problematic workload
 - Remediation stays manual (`AUTOMATIC_EXECUTION_ALLOWED=false`) until that flag is flipped
 
 ## [0.1.2] - 2026-09-14

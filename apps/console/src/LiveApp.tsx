@@ -11,7 +11,13 @@ function formatReais(value?: number | null): string {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-export function LiveApp({ reloadKey }: { reloadKey: number }) {
+export function LiveApp({
+  reloadKey,
+  fallbackCheckout,
+}: {
+  reloadKey: number;
+  fallbackCheckout?: number | null;
+}) {
   const [health, setHealth] = useState<"up" | "down">("down");
   const [api, setApi] = useState<ApiBody | null>(null);
 
@@ -21,8 +27,10 @@ export function LiveApp({ reloadKey }: { reloadKey: number }) {
       try {
         const healthRes = await fetch("/live/demo/health");
         const apiRes = await fetch("/live/demo/api");
-        const apiBody =
-          apiRes.ok || apiRes.status === 500 ? ((await apiRes.json()) as ApiBody) : null;
+        let apiBody: ApiBody | null = null;
+        if (apiRes.ok || apiRes.status === 500) {
+          apiBody = (await apiRes.json()) as ApiBody;
+        }
         if (cancelled) return;
         setHealth(healthRes.ok ? "up" : "down");
         setApi(apiBody);
@@ -41,8 +49,8 @@ export function LiveApp({ reloadKey }: { reloadKey: number }) {
     };
   }, [reloadKey]);
 
-  const amount = api?.checkout_reais;
   const down = health === "down";
+  const amount = api?.checkout_reais ?? fallbackCheckout ?? null;
   const title = down ? "Checkout indisponível" : "Checkout operacional";
   const tone = down ? "border-bad/50 bg-bad/10" : "border-ok/40 bg-ok/10";
 
@@ -50,7 +58,7 @@ export function LiveApp({ reloadKey }: { reloadKey: number }) {
     <section className={`relative flex min-h-0 flex-col overflow-hidden rounded-lg border ${tone}`}>
       <div className="flex items-center justify-between border-b border-line/70 px-4 py-2">
         <div>
-          <div className="text-[11px] uppercase tracking-[0.16em] text-mute">demo-app</div>
+          <div className="text-[11px] uppercase tracking-[0.16em] text-mute">demo-app /api</div>
           <div className="text-sm">{title}</div>
         </div>
         <div className="font-mono text-[11px] text-mute">{down ? "Fora do ar" : "Ready"}</div>
@@ -61,14 +69,14 @@ export function LiveApp({ reloadKey }: { reloadKey: number }) {
           <div className={`mt-2 text-2xl tabular-nums ${down ? "text-bad" : "text-ok"}`}>
             {down ? "—" : formatReais(amount)}
           </div>
-          <div className="mt-1 text-[11px] text-mute">+ R$ 7,00 / s via /api</div>
+          <div className="mt-1 text-[11px] text-mute">valor de checkout_reais na resposta de GET /api</div>
           <div className="mt-4 h-2 rounded bg-navy">
             <div className={`h-2 rounded ${down ? "w-1/5 bg-bad" : "w-4/5 bg-ok"}`} />
           </div>
           <p className="mt-4 text-[12px] leading-5 text-mute">
             {down
-              ? "/health não responde. O pod não fica Ready — a causa entra na análise da IA depois do alerta."
-              : "/health e /api responderam 200. O valor do checkout sobe a cada segundo."}
+              ? "/health não responde. Clique no workload com problema para abrir a análise da IA."
+              : "O backend incrementa R$ 7,00 por segundo. Este card atualiza a cada segundo via /api."}
           </p>
         </div>
       </div>

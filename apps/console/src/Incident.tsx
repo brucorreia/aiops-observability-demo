@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { AnalysisView, EventLine, TimelineStep } from "./types";
+import type { AnalysisView, EventLine, TimelineStep, Workload } from "./types";
 
 function ScoreBar({ action, score, active }: { action: string; score: number; active: boolean }) {
   return (
@@ -17,20 +17,24 @@ function ScoreBar({ action, score, active }: { action: string; score: number; ac
 
 export function IncidentPanel({
   analysis,
+  workload,
   timeline,
   events,
   busy,
   error,
   automaticExecution = false,
   onExecute,
+  onClose,
 }: {
   analysis: AnalysisView | null;
+  workload?: Workload | null;
   timeline: TimelineStep[];
   events: EventLine[];
   busy: boolean;
   error?: string | null;
   automaticExecution?: boolean;
   onExecute: () => void;
+  onClose: () => void;
 }) {
   const [evidence, setEvidence] = useState(false);
   const ranked = [...(analysis?.recommendations || [])].sort(
@@ -39,10 +43,18 @@ export function IncidentPanel({
   return (
     <aside className="flex min-h-0 w-[380px] shrink-0 flex-col border-l border-line bg-panel/80">
       <div className="border-b border-line px-4 py-3">
-        <div className="text-[11px] uppercase tracking-[0.16em] text-mute">AI Incident Analysis</div>
-        <div className="mt-1 text-lg">{analysis?.incident_label || "Incidente identificado"}</div>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.16em] text-mute">AI Incident Analysis</div>
+            <div className="mt-1 text-lg">{analysis?.incident_label || workload?.status || "Incidente"}</div>
+          </div>
+          <button type="button" onClick={onClose} className="text-[11px] uppercase tracking-[0.14em] text-mute">
+            fechar
+          </button>
+        </div>
         <div className="mt-1 text-[12px] text-mute">
-          {analysis?.summary || "O Alertmanager disparou após o roll GitOps."}
+          {analysis?.summary ||
+            `Selecionado: ${workload?.app || workload?.name}. Aguardando o score do alerta.`}
         </div>
         <div className="mt-2 text-[11px] uppercase tracking-[0.14em] text-mute">
           {automaticExecution ? "Execução automática ligada" : "Decisão manual"}

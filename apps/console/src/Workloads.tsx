@@ -4,9 +4,11 @@ import { relativeTime, statusTone } from "./format";
 
 export function Workloads({
   items,
+  selected,
   onSelect,
 }: {
   items: Workload[];
+  selected?: Workload | null;
   onSelect: (pod: Workload) => void;
 }) {
   const [query, setQuery] = useState("");
@@ -57,11 +59,15 @@ export function Workloads({
             </tr>
           </thead>
           <tbody>
-            {filtered.map((item) => (
+            {filtered.map((item) => {
+              const active = selected?.namespace === item.namespace && selected?.name === item.name;
+              return (
               <tr
                 key={`${item.namespace}/${item.name}`}
                 onClick={() => onSelect(item)}
-                className="cursor-pointer border-t border-line/60 hover:bg-raised/80"
+                className={`cursor-pointer border-t border-line/60 hover:bg-raised/80 ${
+                  active ? "bg-cyan/10" : ""
+                }`}
               >
                 <td className="px-3 py-1.5 font-mono">{item.app || item.name}</td>
                 <td className="px-2 py-1.5 text-mute">{item.namespace}</td>
@@ -73,7 +79,8 @@ export function Workloads({
                 </td>
                 <td className="px-3 py-1.5 text-mute">{relativeTime(item.created_at)}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

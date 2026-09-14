@@ -1,19 +1,29 @@
 import type { Workload } from "./types";
 import { statusTone } from "./format";
 
-function PodChip({ pod, onSelect }: { pod: Workload; onSelect: (pod: Workload) => void }) {
-  const bad = pod.status === "CrashLoopBackOff" || pod.status === "OOMKilled";
-  const warn = pod.status === "Pending" || !pod.ready;
+function PodChip({
+  pod,
+  selected,
+  onSelect,
+}: {
+  pod: Workload;
+  selected: boolean;
+  onSelect: (pod: Workload) => void;
+}) {
+  const bad = pod.status === "CrashLoopBackOff" || pod.status === "OOMKilled" || !pod.ready;
+  const warn = pod.status === "Pending";
   return (
     <button
       type="button"
       onClick={() => onSelect(pod)}
       className={`w-full rounded border px-2 py-1.5 text-left transition hover:border-cyan/50 ${
-        bad
-          ? "pulse-bad border-bad/70 bg-bad/10"
-          : warn
-            ? "border-warn/40 bg-warn/10"
-            : "border-ok/30 bg-ok/5"
+        selected
+          ? "border-cyan/70 bg-cyan/15"
+          : bad
+            ? "pulse-bad border-bad/70 bg-bad/10"
+            : warn
+              ? "border-warn/40 bg-warn/10"
+              : "border-ok/30 bg-ok/5"
       }`}
     >
       <div className="flex items-center justify-between gap-2">
@@ -30,13 +40,16 @@ function PodChip({ pod, onSelect }: { pod: Workload; onSelect: (pod: Workload) =
 export function Topology({
   nodes,
   unscheduled,
+  selected,
   onSelect,
 }: {
   nodes: Array<{ name: string; ready: boolean; pods: Workload[] }>;
   unscheduled: Workload[];
+  selected?: Workload | null;
   onSelect: (pod: Workload) => void;
 }) {
   const columns = Math.max(nodes.length, 1);
+  const selectedKey = selected ? `${selected.namespace}/${selected.name}` : "";
   return (
     <div className="rounded-lg border border-line bg-panel p-3">
       <div className="mb-2 flex items-center justify-between">
@@ -52,7 +65,12 @@ export function Topology({
             </div>
             <div className="space-y-1.5">
               {node.pods.map((pod) => (
-                <PodChip key={pod.name} pod={pod} onSelect={onSelect} />
+                <PodChip
+                  key={pod.name}
+                  pod={pod}
+                  selected={`${pod.namespace}/${pod.name}` === selectedKey}
+                  onSelect={onSelect}
+                />
               ))}
               {!node.pods.length && <div className="text-[11px] text-mute">sem workloads da demo</div>}
             </div>
@@ -62,7 +80,12 @@ export function Topology({
       {unscheduled.length > 0 && (
         <div className="mt-3 space-y-1.5">
           {unscheduled.map((pod) => (
-            <PodChip key={pod.name} pod={pod} onSelect={onSelect} />
+            <PodChip
+              key={pod.name}
+              pod={pod}
+              selected={`${pod.namespace}/${pod.name}` === selectedKey}
+              onSelect={onSelect}
+            />
           ))}
         </div>
       )}
