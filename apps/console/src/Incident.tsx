@@ -6,6 +6,8 @@ function ScoreBar({
   action,
   label,
   score,
+  reasons,
+  selected,
   suggested,
   disabled,
   onSelect,
@@ -13,6 +15,8 @@ function ScoreBar({
   action: string;
   label: string;
   score: number;
+  reasons: string[];
+  selected: boolean;
   suggested: boolean;
   disabled: boolean;
   onSelect: (action: string) => void;
@@ -23,7 +27,7 @@ function ScoreBar({
       disabled={disabled}
       onClick={() => onSelect(action)}
       className={`w-full rounded border p-2 text-left transition ${
-        suggested ? "border-cyan/50 bg-cyan/10" : "border-line bg-navy/60 hover:border-cyan/30"
+        selected ? "border-cyan/50 bg-cyan/10" : "border-line bg-navy/60 hover:border-cyan/30"
       } disabled:cursor-not-allowed disabled:opacity-50`}
     >
       <div className="flex items-center justify-between text-[11px]">
@@ -31,11 +35,21 @@ function ScoreBar({
           {label}
           {suggested ? <span className="rounded border border-cyan/40 px-1 text-[9px] text-cyan">IA</span> : null}
         </span>
-        <span className={suggested ? "text-cyan" : "text-white"}>{score}%</span>
+        <span className={selected ? "text-cyan" : "text-white"}>{score}%</span>
       </div>
       <div className="mt-1 h-1.5 overflow-hidden rounded bg-ink">
-        <div className={`h-full ${suggested ? "bg-cyan" : "bg-electric/70"}`} style={{ width: `${Math.max(0, Math.min(100, score))}%` }} />
+        <div
+          className={`h-full ${selected ? "bg-cyan" : "bg-electric/70"}`}
+          style={{ width: `${Math.max(0, Math.min(100, score))}%` }}
+        />
       </div>
+      {reasons.length ? (
+        <ul className="mt-2 space-y-1 text-[11px] leading-4 text-mute">
+          {reasons.map((reason) => (
+            <li key={reason}>{reason}</li>
+          ))}
+        </ul>
+      ) : null}
     </button>
   );
 }
@@ -44,35 +58,39 @@ export function IncidentPanel({
   analysis,
   workload,
   busy,
-  error,
   onExecute,
   onClose,
 }: {
   analysis: AnalysisView | null;
   workload?: Workload | null;
   busy: boolean;
-  error?: string | null;
   onExecute: (action: string) => void;
   onClose: () => void;
 }) {
-  const [evidence, setEvidence] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
   const ranked = useMemo(() => {
-    const scores = new Map(
-      (analysis?.recommendations || []).map((item) => [item.action, Number(item.recommendation_score) || 0]),
-    );
     if (!analysis?.recommendations?.length) return [];
-    return GITOPS_ACTIONS.map((action) => ({
-      action,
-      label: ACTION_LABELS[action],
-      score: scores.get(action) ?? 0,
-    })).sort((a, b) => b.score - a.score);
+    const byAction = new Map((analysis.recommendations || []).map((item) => [item.action, item]));
+    return GITOPS_ACTIONS.map((action) => {
+      const rec = byAction.get(action);
+      return {
+        action,
+        label: rec?.label || ACTION_LABELS[action],
+        score: Number(rec?.recommendation_score) || 0,
+        reasons: rec?.reasons || [],
+      };
+    }).sort((a, b) => b.score - a.score);
   }, [analysis]);
   const suggested = isGitOpsAction(analysis?.recommended_action)
     ? analysis.recommended_action
     : ranked[0]?.action;
+  const selected = picked && ranked.some((item) => item.action === picked) ? picked : suggested;
+  const evidence = analysis?.evidence;
+  const commits = evidence?.recent_commits || [];
+  const logs = evidence?.log_entries || [];
 
   useEffect(() => {
-    setEvidence(false);
+    setPicked(null);
   }, [analysis?.id]);
 
   return (
@@ -101,31 +119,69 @@ export function IncidentPanel({
                 action={item.action}
                 label={item.label}
                 score={item.score}
+                reasons={item.reasons}
+                selected={item.action === selected}
                 suggested={item.action === suggested}
                 disabled={!analysis?.executable || Boolean(analysis.executed) || busy}
-                onSelect={onExecute}
+                onSelect={setPicked}
               />
             ))}
-            <div className="text-[11px] text-mute">Clica numa ação para a executar via GitOps.</div>
           </div>
         ) : (
           <div className="text-[12px] text-mute">Aguardando o score da IA para este incidente.</div>
         )}
-        {error ? <div className="text-[11px] text-bad">{error}</div> : null}
-        {evidence && analysis?.lecture_text ? (
-          <pre className="whitespace-pre-wrap rounded border border-line bg-ink p-3 text-[11px] leading-5 text-mute">
-            {analysis.lecture_text}
-          </pre>
+        {analysis ? (
+          <div className="space-y-2 rounded border border-line bg-navy/40 p-3">
+            <div className="text-[11px] uppercase tracking-[0.14em] text-mute">Evidências</div>
+            <div className="grid grid-cols-2 gap-2 text-[11px]">
+              <div>
+                <div className="text-mute">SHA</div>
+                <div className="font-mono">{evidence?.git_sha || "—"}</div>
+              </div>
+              <div>
+                <div className="text-mute">Deploy</div>
+                <div>
+                  {evidence?.minutes_since_deployment != null
+                    ? `${evidence.minutes_since_deployment} min`
+                    : "—"}
+                </div>
+              </div>
+              <div className="col-span-2">
+                <div className="text-mute">Término</div>
+                <div>{evidence?.last_termination_reason || "—"}</div>
+              </div>
+            </div>
+            {commits.length ? (
+              <div className="space-y-1">
+                <div className="text-[11px] text-mute">Commits</div>
+                {commits.slice(0, 4).map((item) => (
+                  <div key={item.sha} className="font-mono text-[10px] text-mute">
+                    {item.sha} {item.message}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {logs.length ? (
+              <div className="space-y-1">
+                <div className="text-[11px] text-mute">Logs</div>
+                {logs.slice(0, 5).map((item, index) => (
+                  <div key={`${item.event || item.message || "log"}-${index}`} className="text-[10px] text-mute">
+                    {item.message || item.event}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
         ) : null}
       </div>
       <div className="border-t border-line p-4">
         <button
           type="button"
-          disabled={!analysis}
-          onClick={() => setEvidence((value) => !value)}
-          className="w-full rounded border border-line py-2 text-[11px] uppercase tracking-[0.14em] text-mute hover:text-white disabled:opacity-40"
+          disabled={!analysis?.executable || analysis.executed || busy || !selected}
+          onClick={() => selected && onExecute(selected)}
+          className="w-full rounded border border-cyan/40 bg-cyan/15 py-2 text-[12px] uppercase tracking-[0.16em] text-cyan transition hover:bg-cyan/25 disabled:border-line disabled:bg-navy disabled:text-mute"
         >
-          {evidence ? "Ocultar evidências" : "Ver evidências"}
+          {analysis?.executed ? "Ação já aplicada" : "Aplicar"}
         </button>
       </div>
     </aside>

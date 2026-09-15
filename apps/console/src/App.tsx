@@ -42,7 +42,6 @@ export default function App() {
   const [pollError, setPollError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Workload | null>(null);
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const [appKey, setAppKey] = useState(0);
@@ -129,14 +128,16 @@ export default function App() {
 
   async function onExecute(action: string) {
     if (!analysis) return;
-    setActionError(null);
-    setBusy("Aplicando a ação via GitOps…");
+    const ident = analysis.id;
+    setError(null);
+    setSelected(null);
+    setBusy("Ação enviada. Aguardando a pipeline GitOps…");
     try {
-      const updated = await executeRecommendation(analysis.id, action);
+      const updated = await executeRecommendation(ident, action);
       setAnalysis(updated);
       await refresh();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "falha ao executar");
+      setError(err instanceof Error ? err.message : "falha ao executar");
     } finally {
       setBusy(null);
     }
@@ -174,7 +175,6 @@ export default function App() {
             analysis={analysis}
             workload={selected}
             busy={Boolean(busy)}
-            error={actionError}
             onExecute={onExecute}
             onClose={() => setSelected(null)}
           />
