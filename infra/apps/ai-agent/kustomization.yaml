@@ -5,7 +5,7 @@ resources:
 images:
   - name: aiops-agent
     newName: ghcr.io/brucorreia/aiops-agent
-    newTag: "d31b8d0"
+    newTag: "bbb6325"
 patches:
   - target:
       kind: Deployment
