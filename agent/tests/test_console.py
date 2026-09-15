@@ -18,6 +18,7 @@ class ConsoleApiTests(unittest.TestCase):
         store.EVENTS.clear()
         store.LATEST = None
         store.ROLLOUT = None
+        console._PIPELINE_CACHE = None
 
     def test_ready_agent_is_not_crashloop_from_last_oom(self):
         pod = {
@@ -171,6 +172,24 @@ class ConsoleApiTests(unittest.TestCase):
         by_id = {item["id"]: item for item in steps}
         self.assertTrue(by_id["commit"]["done"])
         self.assertTrue(by_id["build"]["active"])
+
+    def test_execute_rollback_restores_demo_app_via_gitops(self):
+        analysis = store.save(
+            {
+                "id": "roll-1",
+                "incident_type": "oom",
+                "recommended_action": "rollback",
+                "scoring_source": "llm",
+                "evidence": {"deployment": "demo-app", "namespace": "aiops-demo"},
+            }
+        )
+        with patch("api.console.start_incident") as start, patch(
+            "api.console.execute_mod.execute"
+        ) as k8s_execute:
+            updated = console.execute_latest(analysis, {"github_token": "t", "github_repository": "o/r"})
+        start.assert_called_once_with({"github_token": "t", "github_repository": "o/r"}, "good")
+        k8s_execute.assert_not_called()
+        self.assertTrue(any(item.get("executed") for item in updated.get("approvals") or []))
 
     def test_recommendation_view_executable_only_for_llm_actions(self):
         view = console.recommendation_view(

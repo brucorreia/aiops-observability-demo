@@ -44,6 +44,8 @@ INCIDENT_MESSAGES = {
 }
 CRASHLOOP_CAUSES = ("crashloop", "oom")
 PIPELINE_WARMUP_SECONDS = 180
+PIPELINE_CACHE_SECONDS = 5.0
+_PIPELINE_CACHE: tuple[float, dict[str, Any]] | None = None
 
 
 def utc_now() -> str:
@@ -212,17 +214,18 @@ def cluster_status(cfg: dict[str, Any]) -> dict[str, Any]:
     app_health = None
     app_api = None
     try:
-        _, health_raw = request(DEMO_APP_URL + "/health", timeout=2.0)
+        _, health_raw = request(DEMO_APP_URL + "/health", timeout=0.4)
         app_health = json.loads(health_raw.decode()) if health_raw else {"status": "ok"}
     except (HttpError, ValueError, json.JSONDecodeError):
         app_health = None
-    try:
-        _, api_raw = request(DEMO_APP_URL + "/api", timeout=2.0, raise_http_error=False)
-        app_api = json.loads(api_raw.decode()) if api_raw else None
-        if isinstance(app_api, dict):
-            app_api.pop("produto", None)
-    except (HttpError, ValueError, json.JSONDecodeError):
-        app_api = None
+    if app_health:
+        try:
+            _, api_raw = request(DEMO_APP_URL + "/api", timeout=0.4, raise_http_error=False)
+            app_api = json.loads(api_raw.decode()) if api_raw else None
+            if isinstance(app_api, dict):
+                app_api.pop("produto", None)
+        except (HttpError, ValueError, json.JSONDecodeError):
+            app_api = None
 
     analysis = store.latest()
     http_failing = bool(app_api and app_api.get("status") == 500)
@@ -493,6 +496,10 @@ def _started_seconds_ago(started_at: str | None) -> float | None:
 
 
 def pipeline_status(cfg: dict[str, Any]) -> dict[str, Any]:
+    global _PIPELINE_CACHE
+    now = time.monotonic()
+    if _PIPELINE_CACHE and now - _PIPELINE_CACHE[0] < PIPELINE_CACHE_SECONDS:
+        return _PIPELINE_CACHE[1]
     runs = github.active_workflow_runs(
         cfg.get("github_repository") or "",
         cfg.get("github_token") or None,
@@ -514,16 +521,20 @@ def pipeline_status(cfg: dict[str, Any]) -> dict[str, Any]:
                 }
             ]
     if not runs:
-        return {"busy": False, "message": None, "run": None}
+        result = {"busy": False, "message": None, "run": None}
+        _PIPELINE_CACHE = (now, result)
+        return result
     run = runs[0]
     name = run.get("name") or "GitHub Actions"
-    return {
+    result = {
         "busy": True,
         "message": (
             f"Pipeline {name} em andamento. Nova ação só será possível depois do término."
         ),
         "run": run,
     }
+    _PIPELINE_CACHE = (now, result)
+    return result
 
 
 def resolve_console_incident(mode: str) -> tuple[str, str, str]:
@@ -546,6 +557,8 @@ def start_incident(cfg: dict[str, Any], mode: str) -> dict[str, Any]:
     pipeline = pipeline_status(cfg)
     if pipeline.get("busy"):
         raise HttpError(pipeline["message"], status=409)
+    global _PIPELINE_CACHE
+    _PIPELINE_CACHE = None
     yaml_text = github.read_file(
         repo, APP_YAML, token, cfg.get("github_api_url") or "https://api.github.com"
     )
@@ -570,7 +583,7 @@ def start_incident(cfg: dict[str, Any], mode: str) -> dict[str, Any]:
     return payload
 
 
-def execute_latest(analysis: dict[str, Any] | None) -> dict[str, Any]:
+def execute_latest(analysis: dict[str, Any] | None, cfg: dict[str, Any] | None = None) -> dict[str, Any]:
     if not analysis:
         raise KeyError("no analysis yet")
     ident = analysis.get("id") or ""
@@ -581,7 +594,17 @@ def execute_latest(analysis: dict[str, Any] | None) -> dict[str, Any]:
         raise PermissionError("investigate_or_none")
     if analysis.get("scoring_source") != "llm":
         raise PermissionError("llm_unavailable")
-    executed, detail = execute_mod.execute(decision, analysis)
+    evidence = analysis.get("evidence") or {}
+    gitops_restore = (
+        decision == "approve_rollback"
+        and (evidence.get("deployment") or "demo-app") == "demo-app"
+        and cfg is not None
+    )
+    if gitops_restore:
+        start_incident(cfg, "good")
+        executed, detail = True, "GitOps restore healthy mode"
+    else:
+        executed, detail = execute_mod.execute(decision, analysis)
     updated = store.record_decision(ident, decision, executed, detail)
     store.emit(
         "human_execution",
@@ -740,11 +763,14 @@ def handle_post(path: str, payload: dict[str, Any], cfg: dict[str, Any]) -> tupl
         ident = str(payload.get("id") or "").strip()
         analysis = store.get(ident) if ident else store.latest()
         try:
-            return 200, recommendation_view(execute_latest(analysis))
+            return 200, recommendation_view(execute_latest(analysis, cfg))
         except KeyError:
             return 404, {"error": "no analysis yet"}
         except PermissionError as exc:
             return 409, {"error": str(exc)}
+        except HttpError as exc:
+            status = exc.status or 502
+            return status, {"error": str(exc)}
         except Exception as exc:  # noqa: BLE001 - surface cluster errors to the console
             return 502, {"error": str(exc)}
     return None
@@ -756,7 +782,7 @@ def proxy_demo(request_path: str) -> tuple[int, bytes, str]:
     if parsed.query:
         suffix = suffix + "?" + parsed.query
     try:
-        status, raw = request(DEMO_APP_URL + suffix, timeout=3.0, raise_http_error=False)
+        status, raw = request(DEMO_APP_URL + suffix, timeout=0.8, raise_http_error=False)
     except HttpError as exc:
         body = json.dumps({"status": "unavailable", "error": str(exc)}).encode()
         return exc.status or 502, body, "application/json"

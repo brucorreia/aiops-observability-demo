@@ -199,7 +199,11 @@ alertmanager: ## Port-forward Alertmanager to localhost:9093
 
 console: ## Port-forward the operator console to localhost:8082
 	@echo "URL: http://localhost:8082"
-	kubectl port-forward -n $(MONITORING_NS) svc/ai-agent 8082:8080
+	@while true; do \
+	  kubectl port-forward -n $(MONITORING_NS) svc/ai-agent 8082:8080 || true; \
+	  echo "port-forward caiu; reconectando em 1s"; \
+	  sleep 1; \
+	done
 
 console-dev: ## Vite dev server (proxies APIs to localhost:8082)
 	cd apps/console && npm install && npm run dev

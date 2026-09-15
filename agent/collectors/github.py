@@ -295,7 +295,7 @@ def active_workflow_runs(
         payload = get_json(
             f"{base}/repos/{repo}/actions/runs?branch={branch}&per_page=20",
             headers=_headers(token),
-            timeout=8.0,
+            timeout=3.0,
         )
     except (HttpError, ValueError, TypeError):
         return []
