@@ -19,6 +19,49 @@ class ConsoleApiTests(unittest.TestCase):
         store.LATEST = None
         store.ROLLOUT = None
 
+    def test_ready_agent_is_not_crashloop_from_last_oom(self):
+        pod = {
+            "metadata": {"name": "ai-agent-x", "namespace": "monitoring", "labels": {"app": "ai-agent"}},
+            "spec": {"nodeName": "n1"},
+            "status": {
+                "phase": "Running",
+                "conditions": [{"type": "Ready", "status": "True"}],
+                "containerStatuses": [
+                    {
+                        "name": "webhook",
+                        "restartCount": 2,
+                        "image": "ghcr.io/x/aiops-agent:abc",
+                        "state": {"running": {"startedAt": "2026-09-14T23:04:29Z"}},
+                        "lastState": {"terminated": {"reason": "OOMKilled", "exitCode": 137}},
+                    }
+                ],
+            },
+        }
+        summary = console._pod_status(pod)
+        self.assertEqual(summary["status"], "Running")
+        self.assertTrue(summary["ready"])
+
+    def test_failing_demo_app_hides_oom_as_crashloop(self):
+        pod = {
+            "metadata": {"name": "demo-app-x", "namespace": "aiops-demo", "labels": {"app": "demo-app"}},
+            "spec": {"nodeName": "n1"},
+            "status": {
+                "phase": "Running",
+                "conditions": [{"type": "Ready", "status": "False"}],
+                "containerStatuses": [
+                    {
+                        "name": "demo-app",
+                        "restartCount": 4,
+                        "state": {"waiting": {"reason": "CrashLoopBackOff"}},
+                        "lastState": {"terminated": {"reason": "OOMKilled", "exitCode": 137}},
+                    }
+                ],
+            },
+        }
+        summary = console._pod_status(pod)
+        self.assertEqual(summary["status"], "CrashLoopBackOff")
+        self.assertFalse(summary["ready"])
+
     def test_mode_files_update_deployed_at(self):
         yaml_text = 'aiops.demo/deployed-at: "1970-01-01T00:00:00Z"\n'
         files = console._mode_files("crashloop", "2026-09-14T19:00:00Z", yaml_text)

@@ -3,7 +3,7 @@ import type { ClusterStatus } from "./types";
 import { clock } from "./format";
 
 const INCIDENTS = [
-  { mode: "crashloop", label: "CrashLoop", icon: ServerCrash },
+  { mode: "crashloop", label: "Gerar Bug", icon: ServerCrash },
   { mode: "good", label: "Saudável", icon: ShieldCheck },
 ] as const;
 

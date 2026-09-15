@@ -19,7 +19,7 @@ import { Workloads } from "./Workloads";
 import type { AnalysisView, ClusterStatus, EventLine, LogLine, Workload } from "./types";
 
 function isProblematic(item: Workload | null): boolean {
-  if (!item) return false;
+  if (!item || item.app !== "demo-app") return false;
   return (
     !item.ready ||
     item.status === "CrashLoopBackOff" ||
@@ -105,7 +105,7 @@ export default function App() {
       );
       return;
     }
-    setBusy(mode === "good" ? "Restaurando a demo-app…" : "Disparando CrashLoop via GitOps…");
+    setBusy(mode === "good" ? "Restaurando a demo-app…" : "Gerando bug via GitOps…");
     setError(null);
     setSelected(null);
     try {

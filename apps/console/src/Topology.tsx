@@ -10,8 +10,10 @@ function PodChip({
   selected: boolean;
   onSelect: (pod: Workload) => void;
 }) {
-  const bad = pod.status === "CrashLoopBackOff" || pod.status === "OOMKilled" || !pod.ready;
-  const warn = pod.status === "Pending";
+  const demoIncident =
+    pod.app === "demo-app" &&
+    (pod.status === "CrashLoopBackOff" || pod.status === "OOMKilled" || !pod.ready);
+  const warn = pod.app === "demo-app" && pod.status === "Pending";
   return (
     <button
       type="button"
@@ -19,7 +21,7 @@ function PodChip({
       className={`w-full rounded border px-2 py-1.5 text-left transition hover:border-cyan/50 ${
         selected
           ? "border-cyan/70 bg-cyan/15"
-          : bad
+          : demoIncident
             ? "pulse-bad border-bad/70 bg-bad/10"
             : warn
               ? "border-warn/40 bg-warn/10"

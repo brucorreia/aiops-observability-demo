@@ -77,8 +77,11 @@ def _pod_status(pod: dict[str, Any]) -> dict[str, Any]:
     meta = pod.get("metadata") or {}
     status = pod.get("status") or {}
     spec = pod.get("spec") or {}
+    app = ((meta.get("labels") or {}).get("app"))
     phase = status.get("phase") or "Unknown"
-    reason = None
+    waiting_reason = None
+    terminated_reason = None
+    last_reason = None
     restarts = 0
     ready = False
     image = None
@@ -93,24 +96,32 @@ def _pod_status(pod: dict[str, Any]) -> dict[str, Any]:
         waiting = ((item.get("state") or {}).get("waiting") or {})
         terminated = ((item.get("state") or {}).get("terminated") or {})
         last = ((item.get("lastState") or {}).get("terminated") or {})
-        reason = waiting.get("reason") or terminated.get("reason") or last.get("reason") or reason
-    if reason in {"CrashLoopBackOff", "OOMKilled", "Error"}:
+        waiting_reason = waiting.get("reason") or waiting_reason
+        terminated_reason = terminated.get("reason") or terminated_reason
+        last_reason = last.get("reason") or last_reason
+    current_reason = waiting_reason or terminated_reason
+    failure_reason = current_reason or (None if ready else last_reason)
+    if ready:
+        badge = "Running"
+    elif app == "demo-app" and failure_reason in {"CrashLoopBackOff", "OOMKilled", "Error"}:
         badge = "CrashLoopBackOff"
+    elif waiting_reason == "CrashLoopBackOff":
+        badge = "CrashLoopBackOff"
+    elif failure_reason == "OOMKilled":
+        badge = "OOMKilled"
     elif phase == "Pending":
         badge = "Pending"
-    elif ready:
-        badge = "Running"
     else:
-        badge = phase
+        badge = failure_reason or phase
     return {
         "name": meta.get("name"),
         "namespace": meta.get("namespace"),
         "node": spec.get("nodeName"),
-        "app": ((meta.get("labels") or {}).get("app")),
+        "app": app,
         "phase": phase,
         "ready": ready,
         "status": badge,
-        "reason": reason,
+        "reason": failure_reason,
         "restarts": restarts,
         "image": image,
         "container": container_name,
