@@ -21,7 +21,7 @@ patches:
             value: demo-app
       - op: replace
         path: /spec/replicas
-        value: 1
+        value: 2
       - op: replace
         path: /spec/template/spec/containers/0/resources/requests/memory
         value: 32Mi
