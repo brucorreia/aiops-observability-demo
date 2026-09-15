@@ -312,7 +312,7 @@ def cluster_status(cfg: dict[str, Any]) -> dict[str, Any]:
         },
         "rollout": rollout,
         "pipeline": pipeline,
-        "analysis": analysis,
+        "analysis": recommendation_view(analysis),
         "timeline": build_timeline(rollout, analysis, health, crashing, http_failing),
     }
 

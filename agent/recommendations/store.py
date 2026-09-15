@@ -11,6 +11,7 @@ EVENTS: list[dict[str, Any]] = []
 ROLLOUT: dict[str, Any] | None = None
 DATA_DIR = Path("/tmp/aiops-incidents")
 MAX_EVENTS = 80
+_HYDRATED = False
 
 
 def analysis_id(incident_type: str, workload: str) -> str:
@@ -33,13 +34,38 @@ def save(analysis: dict[str, Any]) -> dict[str, Any]:
 
 
 def latest() -> dict[str, Any] | None:
+    if not LATEST:
+        _hydrate()
     if LATEST:
         return STORE.get(LATEST)
     return None
 
 
 def get(ident: str) -> dict[str, Any] | None:
+    if ident not in STORE:
+        _hydrate()
     return STORE.get(ident)
+
+
+def _hydrate() -> None:
+    global LATEST, _HYDRATED
+    if _HYDRATED:
+        return
+    _HYDRATED = True
+    if LATEST or not DATA_DIR.exists():
+        return
+    files = sorted(DATA_DIR.glob("*.json"), key=lambda path: path.stat().st_mtime)
+    for path in files:
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        ident = str(data.get("id") or path.stem)
+        data["id"] = ident
+        STORE[ident] = data
+        LATEST = ident
 
 
 def emit(event: str, **fields: Any) -> dict[str, Any]:

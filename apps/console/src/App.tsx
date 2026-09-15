@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   executeRecommendation,
-  fetchEvents,
   fetchLogs,
   fetchPod,
   fetchRecommendation,
@@ -16,7 +15,12 @@ import { Metrics } from "./Metrics";
 import { TopBar } from "./TopBar";
 import { Topology } from "./Topology";
 import { Workloads } from "./Workloads";
-import type { AnalysisView, ClusterStatus, EventLine, LogLine, Workload } from "./types";
+import type { AnalysisView, ClusterStatus, LogLine, Workload } from "./types";
+
+function scoredAnalysis(value: AnalysisView | null | undefined): AnalysisView | null {
+  if (!value?.recommendations?.length) return null;
+  return value;
+}
 
 function isProblematic(item: Workload | null): boolean {
   if (!item || item.app !== "demo-app") return false;
@@ -34,7 +38,6 @@ export default function App() {
   const [analysis, setAnalysis] = useState<AnalysisView | null>(null);
   const [demoLogs, setDemoLogs] = useState<LogLine[]>([]);
   const [agentLogs, setAgentLogs] = useState<LogLine[]>([]);
-  const [events, setEvents] = useState<EventLine[]>([]);
   const [paused, setPaused] = useState(false);
   const [pollError, setPollError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -46,18 +49,19 @@ export default function App() {
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     try {
-      const [nextStatus, nextAnalysis, nextDemo, nextAgent, nextEvents] = await Promise.all([
+      const [nextStatus, nextAnalysis, nextDemo, nextAgent] = await Promise.all([
         fetchStatus(signal),
         fetchRecommendation(signal),
         fetchLogs("demo-app", signal),
         fetchLogs("ai-agent", signal),
-        fetchEvents(signal),
       ]);
       setStatus(nextStatus);
-      setAnalysis(nextAnalysis);
+      setAnalysis(
+        (current) =>
+          scoredAnalysis(nextAnalysis) || scoredAnalysis(nextStatus.analysis) || current,
+      );
       setDemoLogs(nextDemo.logs || []);
       setAgentLogs(nextAgent.logs || []);
-      setEvents(nextEvents.events || []);
       setPollError(null);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
@@ -169,11 +173,8 @@ export default function App() {
           <IncidentPanel
             analysis={analysis}
             workload={selected}
-            timeline={status?.timeline || []}
-            events={events}
             busy={Boolean(busy)}
             error={actionError}
-            automaticExecution={Boolean(status?.automatic_execution_allowed)}
             onExecute={onExecute}
             onClose={() => setSelected(null)}
           />

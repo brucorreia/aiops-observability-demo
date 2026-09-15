@@ -24,7 +24,7 @@ export function fetchEvents(signal?: AbortSignal): Promise<{ events: EventLine[]
 }
 
 export function fetchRecommendation(signal?: AbortSignal): Promise<AnalysisView | null> {
-  return fetch("/api/recommendations", { signal }).then((res) => {
+  return fetch("/api/recommendations", { signal }).then(async (res) => {
     if (res.status === 404) return null;
     return parse<AnalysisView>(res);
   });

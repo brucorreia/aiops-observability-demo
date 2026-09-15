@@ -112,7 +112,7 @@ export type ClusterStatus = {
     image_synced?: boolean;
     workflow?: { status?: string; conclusion?: string };
   };
-  analysis: Record<string, unknown> | null;
+  analysis: AnalysisView | null;
   timeline: TimelineStep[];
 };
 

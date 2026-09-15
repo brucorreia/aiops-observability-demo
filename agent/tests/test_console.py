@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -18,6 +19,7 @@ class ConsoleApiTests(unittest.TestCase):
         store.EVENTS.clear()
         store.LATEST = None
         store.ROLLOUT = None
+        store._HYDRATED = True
         console._PIPELINE_CACHE = None
 
     def test_ready_agent_is_not_crashloop_from_last_oom(self):
@@ -351,6 +353,32 @@ class ConsoleApiTests(unittest.TestCase):
                 {"github_token": "t", "github_repository": "o/r"},
                 "investigate",
             )
+
+    def test_latest_reloads_scores_from_disk(self):
+        data_dir = Path(tempfile.mkdtemp())
+        payload = {
+            "id": "disk-1",
+            "recommended_action": "vertical_scale",
+            "scoring_source": "llm",
+            "recommendations": [
+                {"action": "rollback", "recommendation_score": 40},
+                {"action": "vertical_scale", "recommendation_score": 40},
+            ],
+        }
+        (data_dir / "disk-1.json").write_text(
+            __import__("json").dumps(payload),
+            encoding="utf-8",
+        )
+        store.STORE.clear()
+        store.LATEST = None
+        store._HYDRATED = False
+        with patch.object(store, "DATA_DIR", data_dir):
+            loaded = store.latest()
+        self.assertEqual(loaded["id"], "disk-1")
+        self.assertEqual(loaded["recommendations"][1]["recommendation_score"], 40)
+        view = console.recommendation_view(loaded)
+        self.assertEqual(view["recommendations"][1]["recommendation_score"], 40)
+        self.assertTrue(view["executable"])
 
     def test_static_missing_dir_returns_none(self):
         with patch.object(console, "CONSOLE_DIR", Path("/tmp/missing-console-ui")):
