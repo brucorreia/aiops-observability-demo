@@ -7,7 +7,7 @@ metadata:
     app: demo-app
   annotations:
     aiops.demo/git-sha: "dev"
-    aiops.demo/deployed-at: "2026-09-15T03:47:58Z"
+    aiops.demo/deployed-at: "2026-09-15T03:49:36Z"
     aiops.demo/image: "aiops-demo-app"
 spec:
   replicas: 1
