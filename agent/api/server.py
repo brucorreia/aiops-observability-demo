@@ -56,7 +56,7 @@ def apply_recommendation(analysis: dict[str, Any]) -> dict[str, Any]:
         store.emit(**payload)
         return analysis
     try:
-        executed, detail = execute_mod.execute(decision, analysis)
+        executed, detail = execute_mod.execute(decision, analysis, CFG)
     except Exception as exc:  # noqa: BLE001 - log and keep the webhook 200
         payload = {
             "event": "automatic_execution_failed",

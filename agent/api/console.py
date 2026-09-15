@@ -23,7 +23,14 @@ ARGO_HEALTH_URL = os.getenv("ARGO_HEALTH_URL", "http://argocd-server.argocd.svc/
 CLUSTER_NAME = os.getenv("CLUSTER_NAME", "k3d-aiops")
 MODE_FILE = "apps/demo-app/demo_mode"
 APP_YAML = "deploy/demo-app/demo-app.yaml"
+KUSTOMIZE_FILE = "infra/apps/demo-app/kustomization.yaml"
 WORKFLOW_FILE = "demo-app.yaml"
+MAX_REPLICAS = 3
+MEMORY_LIMITS = ("32Mi", "128Mi", "256Mi")
+MEMORY_REQUESTS = ("16Mi", "32Mi", "64Mi")
+REPLICAS_PATH = "/spec/replicas"
+MEMORY_REQUEST_PATH = "/spec/template/spec/containers/0/resources/requests/memory"
+MEMORY_LIMIT_PATH = "/spec/template/spec/containers/0/resources/limits/memory"
 MIME = {
     ".css": "text/css; charset=utf-8",
     ".html": "text/html; charset=utf-8",
@@ -485,6 +492,126 @@ def _mode_files(file_mode: str, deployed_at: str, yaml_text: str) -> dict[str, s
     return {MODE_FILE: f"{file_mode}\n", APP_YAML: updated}
 
 
+def _kustomize_value(text: str, json_path: str) -> str | None:
+    match = re.search(rf"path: {re.escape(json_path)}\n\s+value: (\S+)", text)
+    return match.group(1) if match else None
+
+
+def _kustomize_set(text: str, json_path: str, value: str) -> str:
+    updated, count = re.subn(
+        rf"(path: {re.escape(json_path)}\n\s+value: )\S+",
+        rf"\g<1>{value}",
+        text,
+        count=1,
+    )
+    if count != 1:
+        raise ValueError(f"could not set {json_path}")
+    return updated
+
+
+def bump_memory_patches(text: str) -> tuple[str, str]:
+    current = _kustomize_value(text, MEMORY_LIMIT_PATH)
+    if current not in MEMORY_LIMITS:
+        raise ValueError(f"unknown memory limit {current}")
+    index = MEMORY_LIMITS.index(current)
+    if index >= len(MEMORY_LIMITS) - 1:
+        raise HttpError("memory already at GitOps cap (256Mi)", status=409)
+    next_limit = MEMORY_LIMITS[index + 1]
+    next_request = MEMORY_REQUESTS[index + 1]
+    updated = _kustomize_set(text, MEMORY_REQUEST_PATH, next_request)
+    updated = _kustomize_set(updated, MEMORY_LIMIT_PATH, next_limit)
+    return updated, f"GitOps memory {current} -> {next_limit}"
+
+
+def bump_replica_patch(text: str) -> tuple[str, str]:
+    current = _kustomize_value(text, REPLICAS_PATH)
+    if current is None or not current.isdigit():
+        raise ValueError(f"unknown replica count {current}")
+    replicas = int(current)
+    if replicas >= MAX_REPLICAS:
+        raise HttpError(f"replicas already at GitOps cap ({MAX_REPLICAS})", status=409)
+    nxt = replicas + 1
+    return _kustomize_set(text, REPLICAS_PATH, str(nxt)), f"GitOps replicas {replicas} -> {nxt}"
+
+
+def _git_repo(cfg: dict[str, Any]) -> tuple[str, str, str]:
+    token = (cfg.get("github_token") or "").strip()
+    repo = cfg.get("github_repository") or ""
+    api_url = cfg.get("github_api_url") or "https://api.github.com"
+    if not token:
+        raise HttpError("GITHUB_TOKEN ausente no Secret ai-agent-llm", status=409)
+    return token, repo, api_url
+
+
+def _reject_if_pipeline_busy(cfg: dict[str, Any]) -> None:
+    pipeline = pipeline_status(cfg)
+    if pipeline.get("busy"):
+        raise HttpError(pipeline["message"], status=409)
+
+
+def _publish_gitops(
+    cfg: dict[str, Any],
+    files: dict[str, str],
+    message: str,
+    *,
+    wait_for_image: bool,
+    extra_rollout: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    token, repo, api_url = _git_repo(cfg)
+    _reject_if_pipeline_busy(cfg)
+    global _PIPELINE_CACHE
+    _PIPELINE_CACHE = None
+    commit = github.commit_files(repo, files, message, token, api_url)
+    payload = {
+        "started_at": utc_now(),
+        **commit,
+        "workflow": (
+            {"status": "queued", "conclusion": None}
+            if wait_for_image
+            else {"status": "completed", "conclusion": "success"}
+        ),
+        "image_synced": not wait_for_image,
+    }
+    if extra_rollout:
+        payload.update(extra_rollout)
+    store.set_rollout(payload)
+    return payload
+
+
+def apply_remediation(cfg: dict[str, Any], decision: str, analysis: dict[str, Any]) -> tuple[bool, str]:
+    evidence = analysis.get("evidence") or {}
+    deployment = evidence.get("deployment") or "demo-app"
+    if deployment != "demo-app":
+        raise HttpError("GitOps remediations only apply to demo-app", status=409)
+    if decision == "approve_rollback":
+        start_incident(cfg, "good")
+        return True, "GitOps restore healthy mode"
+    token, repo, api_url = _git_repo(cfg)
+    _reject_if_pipeline_busy(cfg)
+    kustomize = github.read_file(repo, KUSTOMIZE_FILE, token, api_url)
+    if decision == "approve_vertical_scale":
+        updated, detail = bump_memory_patches(kustomize)
+        files = {KUSTOMIZE_FILE: updated}
+        message = "fix(demo-app): raise memory limit via GitOps"
+        event = "demo_scale_committed"
+    elif decision == "approve_horizontal_scale":
+        updated, detail = bump_replica_patch(kustomize)
+        files = {KUSTOMIZE_FILE: updated}
+        message = "fix(demo-app): add replica via GitOps"
+        event = "demo_scale_committed"
+    else:
+        raise HttpError(f"unsupported GitOps decision {decision}", status=409)
+    commit = _publish_gitops(
+        cfg,
+        files,
+        message,
+        wait_for_image=False,
+        extra_rollout={"mode": decision, "action": decision},
+    )
+    store.emit(event, decision=decision, sha=commit.get("short_sha"), detail=detail)
+    return True, detail
+
+
 def _started_seconds_ago(started_at: str | None) -> float | None:
     if not started_at:
         return None
@@ -550,36 +677,18 @@ def resolve_console_incident(mode: str) -> tuple[str, str, str]:
 
 def start_incident(cfg: dict[str, Any], mode: str) -> dict[str, Any]:
     file_mode, deployed_at, message = resolve_console_incident(mode)
-    token = (cfg.get("github_token") or "").strip()
-    repo = cfg.get("github_repository") or ""
-    if not token:
-        raise HttpError("GITHUB_TOKEN ausente no Secret ai-agent-llm", status=409)
-    pipeline = pipeline_status(cfg)
-    if pipeline.get("busy"):
-        raise HttpError(pipeline["message"], status=409)
-    global _PIPELINE_CACHE
-    _PIPELINE_CACHE = None
-    yaml_text = github.read_file(
-        repo, APP_YAML, token, cfg.get("github_api_url") or "https://api.github.com"
-    )
+    token, repo, api_url = _git_repo(cfg)
+    _reject_if_pipeline_busy(cfg)
+    yaml_text = github.read_file(repo, APP_YAML, token, api_url)
     files = _mode_files(file_mode, deployed_at, yaml_text)
-    commit = github.commit_files(
-        repo,
+    payload = _publish_gitops(
+        cfg,
         files,
         message,
-        token,
-        cfg.get("github_api_url") or "https://api.github.com",
+        wait_for_image=True,
+        extra_rollout={"mode": mode, "deployed_at": deployed_at},
     )
-    payload = {
-        "mode": mode,
-        "deployed_at": deployed_at,
-        "started_at": utc_now(),
-        **commit,
-        "workflow": {"status": "queued", "conclusion": None},
-        "image_synced": False,
-    }
-    store.set_rollout(payload)
-    store.emit("demo_incident_committed", mode=mode, sha=commit.get("short_sha"))
+    store.emit("demo_incident_committed", mode=mode, sha=payload.get("short_sha"))
     return payload
 
 
@@ -594,17 +703,9 @@ def execute_latest(analysis: dict[str, Any] | None, cfg: dict[str, Any] | None =
         raise PermissionError("investigate_or_none")
     if analysis.get("scoring_source") != "llm":
         raise PermissionError("llm_unavailable")
-    evidence = analysis.get("evidence") or {}
-    gitops_restore = (
-        decision == "approve_rollback"
-        and (evidence.get("deployment") or "demo-app") == "demo-app"
-        and cfg is not None
-    )
-    if gitops_restore:
-        start_incident(cfg, "good")
-        executed, detail = True, "GitOps restore healthy mode"
-    else:
-        executed, detail = execute_mod.execute(decision, analysis)
+    if not cfg:
+        raise HttpError("GITHUB_TOKEN ausente no Secret ai-agent-llm", status=409)
+    executed, detail = execute_mod.execute(decision, analysis, cfg)
     updated = store.record_decision(ident, decision, executed, detail)
     store.emit(
         "human_execution",

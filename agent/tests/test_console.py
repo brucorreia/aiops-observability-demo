@@ -184,11 +184,96 @@ class ConsoleApiTests(unittest.TestCase):
             }
         )
         with patch("api.console.start_incident") as start, patch(
-            "api.console.execute_mod.execute"
-        ) as k8s_execute:
-            updated = console.execute_latest(analysis, {"github_token": "t", "github_repository": "o/r"})
+            "api.console.k8s.patch_json"
+        ) as patch_json:
+            updated = console.execute_latest(
+                analysis, {"github_token": "t", "github_repository": "o/r"}
+            )
         start.assert_called_once_with({"github_token": "t", "github_repository": "o/r"}, "good")
-        k8s_execute.assert_not_called()
+        patch_json.assert_not_called()
+        self.assertTrue(any(item.get("executed") for item in updated.get("approvals") or []))
+
+    def test_bump_memory_and_replicas_from_kustomize(self):
+        text = Path(__file__).resolve().parents[2].joinpath(
+            "infra/apps/demo-app/kustomization.yaml"
+        ).read_text()
+        scaled, detail = console.bump_memory_patches(text)
+        self.assertIn("128Mi", detail)
+        self.assertIn("value: 128Mi", scaled)
+        self.assertIn("value: 32Mi", scaled)
+        replicas, replica_detail = console.bump_replica_patch(text)
+        self.assertIn("1 -> 2", replica_detail)
+        self.assertIn("path: /spec/replicas\n        value: 2", replicas)
+
+    def test_memory_cap_is_gitops_conflict(self):
+        text = (
+            "path: /spec/template/spec/containers/0/resources/limits/memory\n"
+            "        value: 256Mi\n"
+        )
+        with self.assertRaises(HttpError) as ctx:
+            console.bump_memory_patches(text)
+        self.assertEqual(ctx.exception.status, 409)
+
+    @patch("api.console.github.active_workflow_runs", return_value=[])
+    @patch("api.console.github.commit_files", return_value={"sha": "def", "short_sha": "def"})
+    @patch("api.console.k8s.patch_json")
+    def test_vertical_scale_commits_kustomize_not_cluster_patch(self, patch_json, commit, _runs):
+        kustomize = Path(__file__).resolve().parents[2].joinpath(
+            "infra/apps/demo-app/kustomization.yaml"
+        ).read_text()
+        with patch("api.console.github.read_file", return_value=kustomize):
+            executed, detail = console.apply_remediation(
+                {"github_token": "t", "github_repository": "o/r"},
+                "approve_vertical_scale",
+                {"evidence": {"deployment": "demo-app"}},
+            )
+        self.assertTrue(executed)
+        self.assertIn("128Mi", detail)
+        patch_json.assert_not_called()
+        files, message = commit.call_args.args[1], commit.call_args.args[2]
+        self.assertIn("value: 128Mi", files[console.KUSTOMIZE_FILE])
+        self.assertEqual(message, "fix(demo-app): raise memory limit via GitOps")
+        rollout = store.rollout() or {}
+        self.assertEqual(rollout.get("workflow"), {"status": "completed", "conclusion": "success"})
+        self.assertTrue(rollout.get("image_synced"))
+
+    @patch("api.console.github.active_workflow_runs", return_value=[])
+    @patch("api.console.github.commit_files", return_value={"sha": "ghi", "short_sha": "ghi"})
+    @patch("api.console.k8s.patch_json")
+    def test_horizontal_scale_commits_replica_patch(self, patch_json, commit, _runs):
+        kustomize = Path(__file__).resolve().parents[2].joinpath(
+            "infra/apps/demo-app/kustomization.yaml"
+        ).read_text()
+        with patch("api.console.github.read_file", return_value=kustomize):
+            executed, detail = console.apply_remediation(
+                {"github_token": "t", "github_repository": "o/r"},
+                "approve_horizontal_scale",
+                {"evidence": {"deployment": "demo-app"}},
+            )
+        self.assertTrue(executed)
+        self.assertIn("2", detail)
+        patch_json.assert_not_called()
+        files = commit.call_args.args[1]
+        self.assertIn("path: /spec/replicas\n        value: 2", files[console.KUSTOMIZE_FILE])
+
+    def test_execute_latest_scale_does_not_call_kubectl_patch(self):
+        analysis = store.save(
+            {
+                "id": "scale-1",
+                "incident_type": "oom",
+                "recommended_action": "vertical_scale",
+                "scoring_source": "llm",
+                "evidence": {"deployment": "demo-app"},
+            }
+        )
+        with patch(
+            "api.console.apply_remediation", return_value=(True, "GitOps memory 32Mi -> 128Mi")
+        ) as apply, patch("api.console.k8s.patch_json") as patch_json:
+            updated = console.execute_latest(
+                analysis, {"github_token": "t", "github_repository": "o/r"}
+            )
+        apply.assert_called_once()
+        patch_json.assert_not_called()
         self.assertTrue(any(item.get("executed") for item in updated.get("approvals") or []))
 
     def test_recommendation_view_executable_only_for_llm_actions(self):

@@ -12,7 +12,7 @@ The agent sends collected logs, Kubernetes evidence, and recent GitHub commits t
 
 If `OPENAI_API_KEY` is missing or the model call fails, the agent does **not** fall back to YAML weights. It records `scoring_source: llm_unavailable`, prefers `investigate`, keeps rollback/scale at 0, and does not change the cluster.
 
-When the LLM scores a firing alert, rollback / vertical scale / horizontal scale are applied automatically. `investigate` and `none` do not patch the workload.
+When the LLM scores a firing alert and automatic execution is enabled, rollback / vertical scale / horizontal scale are committed to Git. `investigate` and `none` do not change the cluster.
 
 Put `OPENAI_API_KEY` in `.env` and run `make llm-secret` (also invoked by `make deploy`). The key lives in Secret `monitoring/ai-agent-llm`, not in Git. `OPENAI_MODEL` defaults to `gpt-4o-mini`; set `gpt-4o` if you want a stronger model.
 

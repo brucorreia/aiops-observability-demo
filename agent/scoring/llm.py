@@ -12,11 +12,11 @@ from scoring.engine import clip_and_normalize
 PROMPT = """You are the only scorer in this AIOps loop. There is no deterministic score to adjust.
 You receive collected evidence plus optional playbook_hints (SRE notes, not answers).
 Assign recommendation_score values that sum to 100 for these actions:
-- rollback: revert the current Deployment revision
-- vertical_scale: raise memory/CPU limits
-- horizontal_scale: add replicas
-- investigate: gather more evidence before changing the workload
-- none: do not change the cluster
+- rollback: restore healthy demo-app via Git (demo_mode=good)
+- vertical_scale: raise memory limits in Git
+- horizontal_scale: add replicas in Git
+- investigate: gather more evidence before changing Git
+- none: do not change Git or the cluster
 
 Rules:
 - You produce the scores. Do not copy playbook_hints as if they were already scored.
@@ -26,7 +26,7 @@ Rules:
 - CrashLoopBackOff is a symptom, not the cause. Distinguish OOMKilled (cgroup memory) from Error/startup exit using last_termination_reason, kube events, restart count, and memory limit vs working set. Do not guess from the alert name alone. Do not expect application logs for those incidents.
 - HTTP 500 is a log signal: pods can stay Ready while /api stdout shows status 500.
 - Prefer rollback when failures started after a commit/rollout that changed the failing app (especially apps/demo-app).
-- Prefer vertical_scale for OOM without a recent app change, or when memory hits the limit without a leak-vs-traffic story that needs more replicas.
+- Prefer vertical_scale for OOM without a recent app change, or when memory hits the limit without a leak-vs-traffic story that needs more replicas. Vertical and horizontal scale are GitOps commits, never live cluster patches.
 - Prefer horizontal_scale only when traffic/CPU evidence supports load, not a single-process leak or crash.
 - Prefer investigate when logs point to upstream/timeout/DNS, when commits do not touch the failing app, or when evidence is weak.
 - Cite Kubernetes reasons/events/restarts for crashloop and oom. Cite log lines for HTTP 500. Cite commit SHAs/files when a deploy is involved.

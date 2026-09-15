@@ -38,7 +38,7 @@ A new pod is not treated as a deploy. `scripts/set-demo-mode.sh` commits `demo_m
 
 ## GitOps
 
-Each image workflow builds one GHCR image and commits **only that app's** tag under `infra/apps/<app>/kustomization.yaml`. Argo CD Applications `demo-app`, `ai-agent`, and `load-generator` watch those paths independently. `DEMO_MODE` patches from the demo scripts are ignored on `demo-app` so a talk incident is not reverted.
+Each image workflow builds one GHCR image and commits **only that app's** tag under `infra/apps/<app>/kustomization.yaml`. Replica and memory scale for `demo-app` live in the same kustomization; the image workflow only rewrites `newName`/`newTag`. Argo CD Applications `demo-app`, `ai-agent`, and `load-generator` watch those paths independently. `DEMO_MODE` is baked into the image, so a talk incident is not reverted by a scale sync.
 
 Local and GHCR images carry OCI labels:
 
@@ -54,7 +54,7 @@ Local and GHCR images carry OCI labels:
 3. **Hypothesize** regression, leak, low limit, load, dependency, config, or infrastructure.
 4. **Score** only with the LLM (logs + commits + cluster evidence). YAML weights are hints, not the score. If the LLM is unavailable, the agent recommends investigate and does not roll back or scale.
 5. **Recommend** actions whose `recommendation_score` values sum to 100.
-6. **Execute** rollback or scale only when `AUTOMATIC_EXECUTION_ALLOWED` is true and the LLM scored a firing Alertmanager alert. The default is false: the operator decides in the console. `investigate` and `none` do not change the cluster. If the LLM is unavailable, nothing is applied.
+6. **Execute** rollback or scale only as Git commits (`apps/demo-app/demo_mode` or `infra/apps/demo-app/kustomization.yaml`). Argo CD applies them; the agent never patches Deployments. This happens automatically only when `AUTOMATIC_EXECUTION_ALLOWED` is true and the LLM scored a firing Alertmanager alert. The default is false: the operator decides in the console. `investigate` and `none` do not change Git or the cluster. If the LLM is unavailable, nothing is applied.
 
 ## Storage
 

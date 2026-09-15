@@ -33,20 +33,7 @@ def api(path: str) -> Any:
 
 
 def patch_json(path: str, payload: dict[str, Any]) -> Any:
-    host = "https://kubernetes.default.svc"
-    cafile = str(CA_PATH) if CA_PATH.exists() else None
-    body = json.dumps(payload).encode()
-    _, raw = request(
-        host + path,
-        method="PATCH",
-        body=body,
-        headers={
-            **_headers(),
-            "Content-Type": "application/strategic-merge-patch+json",
-        },
-        cafile=cafile,
-    )
-    return json.loads(raw.decode()) if raw else None
+    raise RuntimeError("cluster patches are disabled; remediations must go through GitOps")
 
 
 def list_deployments(namespace: str) -> list[dict[str, Any]]:

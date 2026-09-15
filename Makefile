@@ -24,7 +24,7 @@ STALE_DEPLOY ?= 2026-01-01T00:00:00Z
 
 .PHONY: help tools doctor setup bootstrap run stop kube-env cluster argocd argocd-ui build monitoring deploy deploy-homelab setup-local \
 	demo-good demo-crashloop demo-oom demo-oom-stale demo-500 \
-	recommendations rollback status \
+	demo-scale-vertical demo-scale-horizontal recommendations rollback status \
 	app-logs agent-logs victorialogs vmalert alertmanager llm-secret test clean console console-dev
 
 help: ## Show available targets
@@ -172,9 +172,14 @@ demo-500: ## Commit+push HTTP 500 logs while /health stays green
 recommendations: ## Print the latest lecture-friendly recommendation from a firing alert
 	kubectl exec -n $(MONITORING_NS) deploy/ai-agent -- python -m api.cli recommendations --format text
 
-rollback: ## Undo the last demo-app rollout
-	kubectl rollout undo deployment/demo-app -n $(DEMO_NS)
-	kubectl rollout status deployment/demo-app -n $(DEMO_NS) --timeout=120s
+rollback: ## Restore healthy demo-app via GitOps
+	./scripts/set-demo-mode.sh good
+
+demo-scale-vertical: ## Raise demo-app memory limit via GitOps
+	./scripts/set-demo-scale.sh vertical
+
+demo-scale-horizontal: ## Add a demo-app replica via GitOps
+	./scripts/set-demo-scale.sh horizontal
 
 status: ## Show core demo, monitoring, and Argo CD resources
 	kubectl get application -n $(ARGO_NS)

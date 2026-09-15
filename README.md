@@ -6,7 +6,7 @@
 [![ai-agent](https://github.com/brucorreia/aiops-observability-demo/actions/workflows/ai-agent.yaml/badge.svg)](https://github.com/brucorreia/aiops-observability-demo/actions/workflows/ai-agent.yaml)
 [![load-generator](https://github.com/brucorreia/aiops-observability-demo/actions/workflows/load-generator.yaml/badge.svg)](https://github.com/brucorreia/aiops-observability-demo/actions/workflows/load-generator.yaml)
 
-A reproducible Kubernetes demo where firing alerts go to an agent that scores OOMKilled and HTTP 500 logs (CrashLoopBackOff remains available via `make`). The console Execute button applies rollback or scale; automatic remediation stays off until `AUTOMATIC_EXECUTION_ALLOWED=true`. The scores are a prioritization from collected evidence, not mathematical certainty.
+A reproducible Kubernetes demo where firing alerts go to an agent that scores OOMKilled and HTTP 500 logs (CrashLoopBackOff remains available via `make`). The console Execute button commits rollback or scale through GitOps; automatic remediation stays off until `AUTOMATIC_EXECUTION_ALLOWED=true`. The scores are a prioritization from collected evidence, not mathematical certainty.
 
 HTTP 500 is detected only from application stdout. There is no `demo_http_requests_total` metric and no PromQL 5xx rule.
 
@@ -87,7 +87,7 @@ cp .env.example .env
 Useful keys in `.env.example`:
 
 - `RECENT_DEPLOYMENT_WINDOW_MINUTES=15` — what counts as a recent Deployment revision
-- `AUTOMATIC_EXECUTION_ALLOWED=false` — keep remediation manual (console Execute). Set `true` to auto-apply rollback/scale after a scored firing alert
+- `AUTOMATIC_EXECUTION_ALLOWED=false` — keep remediation manual (console Execute). Set `true` to auto-commit GitOps rollback/scale after a scored firing alert
 - `OPENAI_API_KEY` — required for scoring; without it the agent returns `llm_unavailable`
 - `OPENAI_MODEL` — default `gpt-4o-mini`
 - `GITHUB_TOKEN` — optional if GitHub rate-limits anonymous commit lookups

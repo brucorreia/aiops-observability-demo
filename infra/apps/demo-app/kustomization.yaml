@@ -19,3 +19,12 @@ patches:
         value:
           - name: SERVICE_NAME
             value: demo-app
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 16Mi
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 32Mi
