@@ -5,7 +5,7 @@ resources:
 images:
   - name: aiops-demo-app
     newName: ghcr.io/brucorreia/aiops-demo-app
-    newTag: "09a77ba"
+    newTag: "0e76719"
 patches:
   - target:
       kind: Deployment
