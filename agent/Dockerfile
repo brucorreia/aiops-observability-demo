@@ -4,7 +4,7 @@ ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 COPY apps/console/package.json apps/console/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY apps/console/ ./
-RUN npm run build
+RUN npx vite build
 
 FROM python:3.13-alpine
 WORKDIR /app

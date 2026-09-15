@@ -174,7 +174,7 @@ This is a monorepo with isolated pipelines:
 | `agent/**` or `config/scoring.yaml` | `ai-agent.yaml` | `ai-agent` | only `ai-agent` image tag |
 | `load-generator/**` | `load-generator.yaml` (validate) | `load-generator` | only the curl generator |
 
-Each image workflow publishes `linux/amd64` and `linux/arm64` to `ghcr.io/<owner>/<image>:<sha>` (no `latest`) and commits **only that app's** `infra/apps/<app>/kustomization.yaml`. Until the matching pipeline has succeeded, that app may stay `ImagePullBackOff`.
+Each image workflow publishes `linux/arm64` to `ghcr.io/<owner>/<image>:<sha>` (no `latest`) and commits **only that app's** `infra/apps/<app>/kustomization.yaml`. Until the matching pipeline has succeeded, that app may stay `ImagePullBackOff`.
 
 ## 8. Confirm the cluster
 
@@ -203,11 +203,11 @@ kubectl get vmrule -n monitoring
 
 Use three terminals if you want live output: commands, `make agent-logs`, `make app-logs`.
 
-Wait until pods are Ready before switching modes. Open `make console` (http://localhost:8082) for the operator UI: **CrashLoop** and **Saudável**. CrashLoop randomly bakes either a silent startup exit or an OOM leak; the console does not say which. The AI column appears after the alert and names the cause with a scored action. Remediation is manual unless `AUTOMATIC_EXECUTION_ALLOWED` is true.
+Wait until pods are Ready before switching modes. Open `make console` (http://localhost:8082) for the operator UI: **Gerar Bug** and **Saudável**. Gerar Bug randomly bakes either a silent startup exit or an OOM leak; the console does not say which. The AI column appears after the alert and names the cause with a scored action. Remediation is manual unless `AUTOMATIC_EXECUTION_ALLOWED` is true.
 
 ```bash
 source .kube/env
-make console      # operator UI; CrashLoop commits a surprise GitOps incident
+make console      # operator UI; Gerar Bug commits a surprise GitOps incident
 make agent-logs   # scores; execution stays skipped while the flag is false
 ```
 

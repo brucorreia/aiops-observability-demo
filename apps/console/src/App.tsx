@@ -68,10 +68,14 @@ export default function App() {
   useEffect(() => {
     if (paused) return;
     let controller: AbortController | null = null;
+    let inFlight = false;
     const tick = () => {
-      controller?.abort();
+      if (inFlight) return;
+      inFlight = true;
       controller = new AbortController();
-      refresh(controller.signal);
+      refresh(controller.signal).finally(() => {
+        inFlight = false;
+      });
     };
     tick();
     const timer = window.setInterval(tick, 2500);

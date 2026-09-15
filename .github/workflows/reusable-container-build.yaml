@@ -15,28 +15,13 @@ on:
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux/amd64
-            runner: ubuntu-24.04
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
       packages: write
-    env:
-      REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/${{ inputs.image_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Prepare
-        run: |
-          platform=${{ matrix.platform }}
-          echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
 
       - name: Set build date
         id: meta_date
@@ -56,90 +41,36 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY_IMAGE }}
+          images: ghcr.io/${{ github.repository_owner }}/${{ inputs.image_name }}
+          tags: |
+            type=sha,format=long,prefix=
+            type=sha,format=short,prefix=
+          flavor: |
+            latest=false
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.created=${{ steps.meta_date.outputs.created }}
             org.opencontainers.image.version=${{ github.sha }}
 
-      - name: Build and push by digest
-        id: build
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: ${{ inputs.context }}
           file: ${{ inputs.file }}
-          platforms: ${{ matrix.platform }}
-          labels: ${{ steps.meta.outputs.labels }}
-          tags: ${{ env.REGISTRY_IMAGE }}
-          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
+          platforms: linux/arm64
+          push: true
           provenance: false
           sbom: false
-          cache-from: type=gha,scope=${{ inputs.image_name }}-${{ env.PLATFORM_PAIR }}
-          cache-to: type=gha,mode=max,scope=${{ inputs.image_name }}-${{ env.PLATFORM_PAIR }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ inputs.image_name }}-linux-arm64
+          cache-to: type=gha,mode=min,scope=${{ inputs.image_name }}-linux-arm64
           build-args: |
             GIT_SHA=${{ github.sha }}
             SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
             BUILD_DATE=${{ steps.meta_date.outputs.created }}
             VERSION=${{ github.sha }}
-
-      - name: Export digest
-        run: |
-          mkdir -p "${RUNNER_TEMP}/digests"
-          digest="${{ steps.build.outputs.digest }}"
-          touch "${RUNNER_TEMP}/digests/${digest#sha256:}"
-
-      - name: Upload digest
-        uses: actions/upload-artifact@v4
-        with:
-          name: digests-${{ inputs.image_name }}-${{ env.PLATFORM_PAIR }}
-          path: ${{ runner.temp }}/digests/*
-          if-no-files-found: error
-          retention-days: 1
-
-  merge:
-    runs-on: ubuntu-24.04
-    needs: build
-    permissions:
-      contents: read
-      packages: write
-    env:
-      REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/${{ inputs.image_name }}
-    steps:
-      - name: Download digests
-        uses: actions/download-artifact@v4
-        with:
-          path: ${{ runner.temp }}/digests
-          pattern: digests-${{ inputs.image_name }}-*
-          merge-multiple: true
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY_IMAGE }}
-          tags: |
-            type=sha,format=long,prefix=
-            type=sha,format=short,prefix=
-          flavor: |
-            latest=false
-
-      - name: Create manifest list and push
-        working-directory: ${{ runner.temp }}/digests
-        run: |
-          docker buildx imagetools create \
-            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.REGISTRY_IMAGE }}@sha256:%s ' *)
 
       - name: Make GHCR package public
         continue-on-error: true

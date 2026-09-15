@@ -79,10 +79,10 @@ spec:
               port: http
           resources:
             requests:
-              cpu: 10m
-              memory: 128Mi
-            limits:
+              cpu: 100m
               memory: 256Mi
+            limits:
+              memory: 512Mi
           volumeMounts:
             - name: scoring
               mountPath: /app/config
