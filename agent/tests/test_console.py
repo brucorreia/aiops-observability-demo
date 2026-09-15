@@ -126,11 +126,13 @@ class ConsoleApiTests(unittest.TestCase):
         self.assertFalse(result["busy"])
         self.assertIsNone(result["message"])
 
-    def test_pipeline_status_blocks_recent_queued_rollout(self):
+    def test_pipeline_status_blocks_recent_image_rollout(self):
         store.set_rollout(
             {
                 "sha": "abc",
                 "started_at": console.utc_now(),
+                "wait_for_image": True,
+                "image_synced": False,
                 "workflow": {"status": "queued", "conclusion": None},
             }
         )
@@ -138,6 +140,22 @@ class ConsoleApiTests(unittest.TestCase):
             result = console.pipeline_status({"github_token": "t", "github_repository": "o/r"})
         self.assertTrue(result["busy"])
         self.assertIn("depois do término", result["message"])
+        self.assertNotIn("demo-app.yaml", result["message"])
+
+    def test_pipeline_status_idle_for_scale_without_actions(self):
+        store.set_rollout(
+            {
+                "sha": "def",
+                "started_at": console.utc_now(),
+                "wait_for_image": False,
+                "image_synced": True,
+                "workflow": {"status": "queued", "conclusion": None},
+            }
+        )
+        with patch("api.console.github.active_workflow_runs", return_value=[]):
+            result = console.pipeline_status({"github_token": "t", "github_repository": "o/r"})
+        self.assertFalse(result["busy"])
+        self.assertIsNone(result["message"])
 
     def test_pipeline_status_ignores_fake_queued_without_recent_start(self):
         store.set_rollout(
@@ -238,6 +256,7 @@ class ConsoleApiTests(unittest.TestCase):
         rollout = store.rollout() or {}
         self.assertEqual(rollout.get("workflow"), {"status": "completed", "conclusion": "success"})
         self.assertTrue(rollout.get("image_synced"))
+        self.assertFalse(rollout.get("wait_for_image"))
 
     @patch("api.console.github.active_workflow_runs", return_value=[])
     @patch("api.console.github.commit_files", return_value={"sha": "ghi", "short_sha": "ghi"})

@@ -257,7 +257,7 @@ def workflow_run_for_sha(
         return {"status": "unavailable", "conclusion": None, "error": str(exc)}
     runs = (payload or {}).get("workflow_runs") or []
     if not runs:
-        return {"status": "queued", "conclusion": None, "html_url": None}
+        return {"status": "not_found", "conclusion": None, "html_url": None}
     run = runs[0]
     return {
         "status": run.get("status") or "queued",

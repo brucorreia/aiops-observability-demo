@@ -50,7 +50,7 @@ INCIDENT_MESSAGES = {
     "oom-stale": "fix(demo-app): leak memory with a stale deploy timestamp",
 }
 CRASHLOOP_CAUSES = ("crashloop", "oom")
-PIPELINE_WARMUP_SECONDS = 180
+PIPELINE_WARMUP_SECONDS = 25
 PIPELINE_CACHE_SECONDS = 5.0
 _PIPELINE_CACHE: tuple[float, dict[str, Any]] | None = None
 
@@ -241,14 +241,16 @@ def cluster_status(cfg: dict[str, Any]) -> dict[str, Any]:
         health = "Degraded"
 
     rollout = store.rollout() or {}
-    if rollout.get("sha"):
-        rollout["workflow"] = github.workflow_run_for_sha(
+    if rollout.get("sha") and rollout.get("wait_for_image"):
+        found = github.workflow_run_for_sha(
             cfg.get("github_repository") or "",
             rollout.get("sha") or "",
             WORKFLOW_FILE,
             cfg.get("github_token") or None,
             cfg.get("github_api_url") or "https://api.github.com",
         )
+        if found.get("status") not in {None, "not_found", "unavailable"}:
+            rollout["workflow"] = found
         short = (rollout.get("short_sha") or "")[:7]
         image_tag = (image or "").rsplit(":", 1)[-1] if image else ""
         rollout["image_synced"] = bool(short and image_tag.startswith(short))
@@ -565,6 +567,7 @@ def _publish_gitops(
     payload = {
         "started_at": utc_now(),
         **commit,
+        "wait_for_image": wait_for_image,
         "workflow": (
             {"status": "queued", "conclusion": None}
             if wait_for_image
@@ -638,12 +641,21 @@ def pipeline_status(cfg: dict[str, Any]) -> dict[str, Any]:
         status = workflow.get("status")
         warming = _started_seconds_ago(rollout.get("started_at"))
         real_run = bool(workflow.get("html_url"))
+        waiting_for_image = bool(rollout.get("wait_for_image")) and not rollout.get("image_synced")
         recent = warming is not None and 0 <= warming < PIPELINE_WARMUP_SECONDS
-        if status in github.ACTIVE_WORKFLOW_STATUSES and (real_run or recent):
+        if status in github.ACTIVE_WORKFLOW_STATUSES and real_run:
             runs = [
                 {
                     "name": workflow.get("name") or WORKFLOW_FILE,
                     "status": status,
+                    "html_url": workflow.get("html_url"),
+                }
+            ]
+        elif waiting_for_image and recent:
+            runs = [
+                {
+                    "name": workflow.get("name") or "GitHub Actions",
+                    "status": status or "queued",
                     "html_url": workflow.get("html_url"),
                 }
             ]
