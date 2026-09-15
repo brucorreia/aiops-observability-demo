@@ -32,6 +32,8 @@ export type Recommendation = {
   action: string;
   recommendation_score: number;
   reasons?: string[];
+  label?: string;
+  executable?: boolean;
 };
 
 export type AnalysisView = {

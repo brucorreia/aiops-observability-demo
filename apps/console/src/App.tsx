@@ -123,12 +123,12 @@ export default function App() {
     }
   }
 
-  async function onExecute() {
+  async function onExecute(action: string) {
     if (!analysis) return;
     setActionError(null);
-    setBusy("Aplicando a ação da IA…");
+    setBusy("Aplicando a ação via GitOps…");
     try {
-      const updated = await executeRecommendation(analysis.id);
+      const updated = await executeRecommendation(analysis.id, action);
       setAnalysis(updated);
       await refresh();
     } catch (err) {

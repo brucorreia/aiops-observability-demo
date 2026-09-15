@@ -38,11 +38,11 @@ export function startIncident(mode: string): Promise<unknown> {
   }).then((res) => parse(res));
 }
 
-export function executeRecommendation(id?: string): Promise<AnalysisView> {
+export function executeRecommendation(id?: string, action?: string): Promise<AnalysisView> {
   return fetch("/api/execute", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id }),
+    body: JSON.stringify({ id, action }),
   }).then((res) => parse<AnalysisView>(res));
 }
 

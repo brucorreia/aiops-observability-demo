@@ -276,7 +276,7 @@ class ConsoleApiTests(unittest.TestCase):
         patch_json.assert_not_called()
         self.assertTrue(any(item.get("executed") for item in updated.get("approvals") or []))
 
-    def test_recommendation_view_executable_only_for_llm_actions(self):
+    def test_recommendation_view_executable_when_llm_scored(self):
         view = console.recommendation_view(
             {
                 "id": "1",
@@ -288,17 +288,69 @@ class ConsoleApiTests(unittest.TestCase):
             }
         )
         self.assertTrue(view["executable"])
-        skipped = console.recommendation_view(
+        self.assertTrue(view["recommendations"][0]["executable"])
+        investigate = console.recommendation_view(
             {
                 "id": "2",
                 "incident_type": "crashloop",
                 "recommended_action": "investigate",
                 "scoring_source": "llm",
+                "recommendations": [{"action": "investigate", "recommendation_score": 70}],
+                "evidence": {},
+            }
+        )
+        self.assertTrue(investigate["executable"])
+        self.assertFalse(investigate["recommendations"][0]["executable"])
+        skipped = console.recommendation_view(
+            {
+                "id": "3",
+                "incident_type": "crashloop",
+                "recommended_action": "investigate",
+                "scoring_source": "llm_unavailable",
                 "recommendations": [],
                 "evidence": {},
             }
         )
         self.assertFalse(skipped["executable"])
+
+    def test_execute_latest_honors_operator_action(self):
+        analysis = store.save(
+            {
+                "id": "pick-1",
+                "incident_type": "oom",
+                "recommended_action": "rollback",
+                "scoring_source": "llm",
+                "evidence": {"deployment": "demo-app"},
+            }
+        )
+        with patch(
+            "api.console.apply_remediation", return_value=(True, "GitOps memory 32Mi -> 128Mi")
+        ) as apply:
+            updated = console.execute_latest(
+                analysis,
+                {"github_token": "t", "github_repository": "o/r"},
+                "vertical_scale",
+            )
+        apply.assert_called_once()
+        self.assertEqual(apply.call_args.args[1], "approve_vertical_scale")
+        self.assertTrue(any(item.get("executed") for item in updated.get("approvals") or []))
+
+    def test_execute_latest_rejects_investigate(self):
+        analysis = store.save(
+            {
+                "id": "pick-2",
+                "incident_type": "oom",
+                "recommended_action": "rollback",
+                "scoring_source": "llm",
+                "evidence": {"deployment": "demo-app"},
+            }
+        )
+        with self.assertRaises(PermissionError):
+            console.execute_latest(
+                analysis,
+                {"github_token": "t", "github_repository": "o/r"},
+                "investigate",
+            )
 
     def test_static_missing_dir_returns_none(self):
         with patch.object(console, "CONSOLE_DIR", Path("/tmp/missing-console-ui")):

@@ -692,15 +692,20 @@ def start_incident(cfg: dict[str, Any], mode: str) -> dict[str, Any]:
     return payload
 
 
-def execute_latest(analysis: dict[str, Any] | None, cfg: dict[str, Any] | None = None) -> dict[str, Any]:
+def execute_latest(
+    analysis: dict[str, Any] | None,
+    cfg: dict[str, Any] | None = None,
+    action: str | None = None,
+) -> dict[str, Any]:
     if not analysis:
         raise KeyError("no analysis yet")
     ident = analysis.get("id") or ""
     if any(item.get("executed") for item in analysis.get("approvals") or []):
         return analysis
-    decision = execute_mod.ACTION_DECISIONS.get(analysis.get("recommended_action") or "")
+    chosen = (action or analysis.get("recommended_action") or "").strip()
+    decision = execute_mod.ACTION_DECISIONS.get(chosen)
     if not decision:
-        raise PermissionError("investigate_or_none")
+        raise PermissionError("unsupported_action")
     if analysis.get("scoring_source") != "llm":
         raise PermissionError("llm_unavailable")
     if not cfg:
@@ -713,6 +718,7 @@ def execute_latest(analysis: dict[str, Any] | None, cfg: dict[str, Any] | None =
         decision=decision,
         executed=executed,
         detail=detail,
+        action=chosen,
     )
     return updated
 
@@ -761,7 +767,17 @@ def recommendation_view(analysis: dict[str, Any] | None) -> dict[str, Any] | Non
     evidence = analysis.get("evidence") or {}
     approvals = analysis.get("approvals") or []
     action = analysis.get("recommended_action")
-    executable = action in execute_mod.ACTION_DECISIONS and analysis.get("scoring_source") == "llm"
+    executable = analysis.get("scoring_source") == "llm"
+    recommendations = []
+    for rec in analysis.get("recommendations") or []:
+        rec_action = rec.get("action")
+        recommendations.append(
+            {
+                **rec,
+                "label": ACTION_LABELS.get(rec_action, rec_action),
+                "executable": rec_action in execute_mod.ACTION_DECISIONS,
+            }
+        )
     return {
         "id": analysis.get("id"),
         "incident_type": analysis.get("incident_type"),
@@ -777,7 +793,7 @@ def recommendation_view(analysis: dict[str, Any] | None) -> dict[str, Any] | Non
         "executable": executable,
         "executed": any(item.get("executed") for item in approvals),
         "approvals": approvals,
-        "recommendations": analysis.get("recommendations") or [],
+        "recommendations": recommendations,
         "evidence": {
             "deployment": evidence.get("deployment"),
             "namespace": evidence.get("namespace"),
@@ -864,7 +880,9 @@ def handle_post(path: str, payload: dict[str, Any], cfg: dict[str, Any]) -> tupl
         ident = str(payload.get("id") or "").strip()
         analysis = store.get(ident) if ident else store.latest()
         try:
-            return 200, recommendation_view(execute_latest(analysis, cfg))
+            return 200, recommendation_view(
+                execute_latest(analysis, cfg, str(payload.get("action") or "").strip() or None)
+            )
         except KeyError:
             return 404, {"error": "no analysis yet"}
         except PermissionError as exc:

@@ -1,3 +1,17 @@
+export const GITOPS_ACTIONS = ["rollback", "vertical_scale", "horizontal_scale"] as const;
+
+export const ACTION_LABELS: Record<string, string> = {
+  rollback: "Rollback",
+  vertical_scale: "Escala vertical",
+  horizontal_scale: "Escala horizontal",
+};
+
+export type GitOpsAction = (typeof GITOPS_ACTIONS)[number];
+
+export function isGitOpsAction(action: string | undefined | null): action is GitOpsAction {
+  return GITOPS_ACTIONS.some((item) => item === action);
+}
+
 export function formatBytes(value?: number | null): string {
   if (value == null || Number.isNaN(value)) return "—";
   const units = ["B", "KiB", "MiB", "GiB"];
